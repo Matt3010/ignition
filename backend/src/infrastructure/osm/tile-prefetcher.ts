@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AppConfig } from "../../config/env.js";
@@ -19,6 +20,14 @@ export class NoopTilePrefetcher implements TilePrefetcher {
       skipped: 0,
       failed: 0,
       lastRegion: null,
+      lastBbox: null,
+      lastTileDir: null,
+      lastDownloadedAt: null,
+      lastBuiltAt: null,
+      lastImportStatus: null,
+      lastImportAt: null,
+      lastImportRecords: null,
+      lastImportDeactivated: null,
       lastError: null,
       updatedAt: null,
     };
@@ -91,6 +100,7 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
   }
 
   status(): TilePrefetchStatus {
+    const metadata = this.lastRegion ? readPrefetchMetadata(path.resolve(this.config.TILE_PREFETCH_TILE_ROOT, this.lastRegion)) : null;
     return {
       enabled: true,
       queued: this.queue.length,
@@ -99,6 +109,14 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
       skipped: this.skipped,
       failed: this.failed,
       lastRegion: this.lastRegion,
+      lastBbox: metadata?.bbox ?? null,
+      lastTileDir: metadata?.tileDir ?? (this.lastRegion ? path.resolve(this.config.TILE_PREFETCH_TILE_ROOT, this.lastRegion) : null),
+      lastDownloadedAt: metadata?.downloadedAt ?? null,
+      lastBuiltAt: metadata?.builtAt ?? null,
+      lastImportStatus: metadata?.lastImport?.status ?? null,
+      lastImportAt: metadata?.lastImport?.at ?? null,
+      lastImportRecords: metadata?.lastImport?.records ?? null,
+      lastImportDeactivated: metadata?.lastImport?.deactivated ?? null,
       lastError: this.lastError,
       updatedAt: this.updatedAt,
     };
@@ -130,7 +148,15 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
           OSM_REGION: plan.region,
           OSM_BBOX: plan.bbox,
           VALHALLA_TILE_DIR: tileDir,
+          VALHALLA_ACTIVE_TILE_DIR: this.config.VALHALLA_ACTIVE_TILE_DIR ?? "",
+          VALHALLA_HOST_TILE_DIR: this.config.VALHALLA_HOST_TILE_DIR ?? "",
+          VALHALLA_CONTAINER_NAME: this.config.VALHALLA_CONTAINER_NAME ?? "",
           TILE_PREFETCH_RESTART_VALHALLA: String(this.config.TILE_PREFETCH_RESTART_VALHALLA),
+          TILE_PREFETCH_IMPORT_ALERTS: String(this.config.TILE_PREFETCH_IMPORT_ALERTS),
+          TILE_PREFETCH_MAX_AGE_HOURS: String(this.config.TILE_PREFETCH_MAX_AGE_HOURS),
+          TILE_PREFETCH_RETRIES: String(this.config.TILE_PREFETCH_RETRIES),
+          TILE_PREFETCH_RETRY_DELAY_SECONDS: String(this.config.TILE_PREFETCH_RETRY_DELAY_SECONDS),
+          TILE_PREFETCH_LOCK_TIMEOUT_SECONDS: String(this.config.TILE_PREFETCH_LOCK_TIMEOUT_SECONDS),
           TILE_PREFETCH_DRY_RUN: process.env.TILE_PREFETCH_DRY_RUN ?? "false",
         },
         timeout: this.config.REQUEST_TIMEOUT_MS * 120,
@@ -146,5 +172,28 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
     } finally {
       this.updatedAt = new Date().toISOString();
     }
+  }
+}
+
+interface PrefetchMetadata {
+  bbox?: string;
+  tileDir?: string;
+  downloadedAt?: string;
+  builtAt?: string;
+  lastImport?: {
+    status?: string;
+    at?: string;
+    records?: number | null;
+    deactivated?: number | null;
+  };
+}
+
+function readPrefetchMetadata(tileDir: string): PrefetchMetadata | null {
+  const file = path.join(tileDir, "prefetch-meta.json");
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as PrefetchMetadata;
+  } catch {
+    return null;
   }
 }

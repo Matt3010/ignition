@@ -25,6 +25,9 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     OSM_REGION: "veneto",
     OSM_DATA_DIR: "./data/osm",
     VALHALLA_TILE_DIR: "./data/valhalla",
+    VALHALLA_ACTIVE_TILE_DIR: undefined,
+    VALHALLA_HOST_TILE_DIR: undefined,
+    VALHALLA_CONTAINER_NAME: undefined,
     OSM_UPDATE_CRON: "0 4 * * 0",
     TILE_PREFETCH_SCRIPT: "scripts/prefetch-valhalla-bbox.sh",
     TILE_PREFETCH_TILE_ROOT: "./data/valhalla-prefetch",
@@ -37,6 +40,11 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     TILE_PREFETCH_MIN_INTERVAL_SECONDS: 60,
     TILE_PREFETCH_MAX_QUEUE: 4,
     TILE_PREFETCH_RESTART_VALHALLA: true,
+    TILE_PREFETCH_IMPORT_ALERTS: true,
+    TILE_PREFETCH_MAX_AGE_HOURS: 168,
+    TILE_PREFETCH_RETRIES: 2,
+    TILE_PREFETCH_RETRY_DELAY_SECONDS: 3,
+    TILE_PREFETCH_LOCK_TIMEOUT_SECONDS: 300,
     ...overrides,
   };
 }

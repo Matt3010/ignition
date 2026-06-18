@@ -9,8 +9,16 @@ services:
       DATABASE_URL: postgres://road:road@postgres:5432/road_context
       VALHALLA_BASE_URL: http://valhalla:8002
       ROAD_CONTEXT_PROVIDER: valhalla
+      OSM_DATA_DIR: /app/data/osm
+      VALHALLA_TILE_DIR: /app/data/valhalla
+      VALHALLA_ACTIVE_TILE_DIR: /app/data/valhalla
+      VALHALLA_CONTAINER_NAME: road-context-valhalla
+      TILE_PREFETCH_TILE_ROOT: /app/data/valhalla-prefetch
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,6 +56,7 @@ services:
 
   valhalla:
     image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: road-context-valhalla
     platform: linux/arm64/v8
     entrypoint: ["valhalla_service"]
     command: ["/custom_files/valhalla.json", "1"]

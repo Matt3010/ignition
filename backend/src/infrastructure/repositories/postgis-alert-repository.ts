@@ -119,6 +119,40 @@ export class PostgisAlertRepository implements AlertRepository {
     }
   }
 
+  async deactivateMissingInBounds(input: {
+    source: string;
+    activeIds: string[];
+    bounds: {
+      minLatitude: number;
+      minLongitude: number;
+      maxLatitude: number;
+      maxLongitude: number;
+    };
+  }): Promise<number> {
+    const result = await this.pool.query(
+      `
+      update road_alerts
+      set active = false, updated_at = now()
+      where source = $1
+        and active = true
+        and id <> all($2::uuid[])
+        and ST_Covers(
+          ST_MakeEnvelope($3, $4, $5, $6, 4326),
+          geometry
+        )
+      `,
+      [
+        input.source,
+        input.activeIds,
+        input.bounds.minLongitude,
+        input.bounds.minLatitude,
+        input.bounds.maxLongitude,
+        input.bounds.maxLatitude,
+      ],
+    );
+    return result.rowCount ?? 0;
+  }
+
   async health(): Promise<"up" | "down"> {
     try {
       await this.pool.query("select 1 from road_alerts limit 1");

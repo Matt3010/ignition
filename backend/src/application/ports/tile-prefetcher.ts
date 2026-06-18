@@ -8,6 +8,14 @@ export interface TilePrefetchStatus {
   skipped: number;
   failed: number;
   lastRegion: string | null;
+  lastBbox: string | null;
+  lastTileDir: string | null;
+  lastDownloadedAt: string | null;
+  lastBuiltAt: string | null;
+  lastImportStatus: string | null;
+  lastImportAt: string | null;
+  lastImportRecords: number | null;
+  lastImportDeactivated: number | null;
   lastError: string | null;
   updatedAt: string | null;
 }

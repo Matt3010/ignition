@@ -22,9 +22,6 @@ lint:
 build:
 	npm run build
 
-mock-up:
-	docker compose -f docker-compose.mock.yml up --build
-
 up:
 	docker compose up --build
 
@@ -38,13 +35,22 @@ seed:
 	npm run seed
 
 import-alerts:
-	npm run import:alerts -- --file tests/fixtures/alerts.geojson --source fixture
+	npm run import:osm-alerts
+
+purge-non-osm-alerts:
+	npm run alerts:purge-non-osm
 
 valhalla-build:
 	npm run valhalla:build
 
 valhalla-prefetch:
 	npm run valhalla:prefetch
+
+valhalla-package:
+	npm run valhalla:package
+
+raspberry-smoke:
+	npm run raspberry:smoke
 
 osm-bbox:
 	npm run osm:bbox

@@ -60,6 +60,7 @@ while true; do
 
   if [[ "$DRIVE_CHUNK_DRY_RUN" != "true" ]]; then
     OSM_REGION="$region" OSM_BBOX="$bbox" npm run osm:bbox:direct
+    OSM_REGION="$region" npm run import:osm-alerts
     rm -rf "$tile_dir"
     OSM_REGION="$region" VALHALLA_TILE_DIR="$tile_dir" npm run valhalla:build
     VALHALLA_TILE_DIR="$tile_dir" POSTGRES_PORT="$POSTGRES_PORT" docker compose -f docker-compose.yml up -d --force-recreate valhalla

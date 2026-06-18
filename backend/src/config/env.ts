@@ -34,6 +34,9 @@ const envSchema = z.object({
   OSM_REGION: z.string().default("veneto"),
   OSM_DATA_DIR: z.string().default("./data/osm"),
   VALHALLA_TILE_DIR: z.string().default("./data/valhalla"),
+  VALHALLA_ACTIVE_TILE_DIR: z.string().optional(),
+  VALHALLA_HOST_TILE_DIR: z.string().optional(),
+  VALHALLA_CONTAINER_NAME: z.string().optional(),
   OSM_UPDATE_CRON: z.string().default("0 4 * * 0"),
   TILE_PREFETCH_SCRIPT: z.string().default("scripts/prefetch-valhalla-bbox.sh"),
   TILE_PREFETCH_TILE_ROOT: z.string().default("./data/valhalla-prefetch"),
@@ -46,10 +49,19 @@ const envSchema = z.object({
   TILE_PREFETCH_MIN_INTERVAL_SECONDS: z.coerce.number().positive().default(60),
   TILE_PREFETCH_MAX_QUEUE: z.coerce.number().int().positive().default(4),
   TILE_PREFETCH_RESTART_VALHALLA: booleanEnv.default(true),
+  TILE_PREFETCH_IMPORT_ALERTS: booleanEnv.default(true),
+  TILE_PREFETCH_MAX_AGE_HOURS: z.coerce.number().positive().default(168),
+  TILE_PREFETCH_RETRIES: z.coerce.number().int().positive().default(2),
+  TILE_PREFETCH_RETRY_DELAY_SECONDS: z.coerce.number().positive().default(3),
+  TILE_PREFETCH_LOCK_TIMEOUT_SECONDS: z.coerce.number().positive().default(300),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  return envSchema.parse(env);
+  const config = envSchema.parse(env);
+  if (config.NODE_ENV === "production" && config.ROAD_CONTEXT_PROVIDER === "mock") {
+    throw new Error("ROAD_CONTEXT_PROVIDER=mock is not allowed in production");
+  }
+  return config;
 }

@@ -47,7 +47,7 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
       const base: Omit<MatchedRoad, "confidence"> = {
         matched: true,
         roadId: edge.way_id === undefined || edge.way_id === null ? null : `way-${edge.way_id}`,
-        roadName: edge.names?.[0] ?? null,
+        roadName: displayRoadName(edge),
         speedLimitKmh: parseMaxspeedToKmh(edge.speed_limit ?? edge.speed),
         roadType: edge.road_class ?? null,
         direction: edge.forward === false ? "backward" : edge.forward === true ? "forward" : "unknown",
@@ -80,6 +80,43 @@ function toValhallaPoint(sample: GpsSample): ValhallaTracePoint {
     heading: sample.course ?? undefined,
     accuracy: sample.horizontalAccuracyMeters,
   };
+}
+
+function displayRoadName(edge: ValhallaEdge): string | null {
+  const explicitName = edge.names?.find((name) => name.trim().length > 0);
+  if (explicitName) return explicitName;
+  if (!edge.road_class && edge.way_id === undefined) return null;
+  const typeLabel = roadTypeLabel(edge.road_class);
+  return `${typeLabel} senza nome`;
+}
+
+function roadTypeLabel(roadType: string | undefined): string {
+  switch (roadType) {
+    case "motorway":
+      return "Autostrada";
+    case "trunk":
+      return "Strada extraurbana principale";
+    case "primary":
+      return "Strada primaria";
+    case "secondary":
+      return "Strada secondaria";
+    case "tertiary":
+      return "Strada terziaria";
+    case "residential":
+      return "Strada residenziale";
+    case "service":
+      return "Strada di servizio";
+    case "unclassified":
+      return "Strada locale";
+    case "motorway_link":
+    case "trunk_link":
+    case "primary_link":
+    case "secondary_link":
+    case "tertiary_link":
+      return "Rampa";
+    default:
+      return "Strada";
+  }
 }
 
 function qualityFromMatchedPoint(
