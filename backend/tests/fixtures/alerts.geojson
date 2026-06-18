@@ -1,0 +1,28 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "550e8400-e29b-41d4-a716-446655440003",
+      "properties": {
+        "type": "fixedSpeedCamera",
+        "maxspeed": "70",
+        "direction": "forward",
+        "bearing": 0,
+        "roadId": "way-mock-primary",
+        "confidence": 0.98
+      },
+      "geometry": { "type": "Point", "coordinates": [11.0, 45.0045] }
+    },
+    {
+      "type": "Feature",
+      "id": "550e8400-e29b-41d4-a716-446655440004",
+      "properties": {
+        "type": "roadHazard",
+        "direction": "unknown",
+        "confidence": 0.7
+      },
+      "geometry": { "type": "Point", "coordinates": [11.0, 45.005] }
+    }
+  ]
+}

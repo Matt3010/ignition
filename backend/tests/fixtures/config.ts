@@ -1,0 +1,52 @@
+import type { AppConfig } from "../../src/config/env.js";
+
+export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+  return {
+    NODE_ENV: "test",
+    PORT: 0,
+    HOST: "127.0.0.1",
+    DATABASE_URL: "postgres://road:road@localhost:5432/road_context",
+    VALHALLA_BASE_URL: "http://127.0.0.1:8002",
+    ROAD_CONTEXT_PROVIDER: "mock",
+    REQUEST_TIMEOUT_MS: 5000,
+    VALHALLA_TIMEOUT_MS: 100,
+    MAX_GPS_ACCURACY_METERS: 100,
+    ALERT_SEARCH_RADIUS_METERS: 1500,
+    ALERT_DIRECTION_TOLERANCE_DEGREES: 45,
+    SESSION_TRACE_TTL_SECONDS: 180,
+    CACHE_TTL_SECONDS: 1,
+    LOG_LEVEL: "silent",
+    CORS_ORIGIN: "*",
+    PAYLOAD_LIMIT_BYTES: 8192,
+    RATE_LIMIT_MAX: 500,
+    RATE_LIMIT_WINDOW: "1 minute",
+    MIN_CLIENT_INTERVAL_MS: 1000,
+    API_VERSION: "1.0.0-test",
+    OSM_REGION: "veneto",
+    OSM_DATA_DIR: "./data/osm",
+    VALHALLA_TILE_DIR: "./data/valhalla",
+    OSM_UPDATE_CRON: "0 4 * * 0",
+    TILE_PREFETCH_SCRIPT: "scripts/prefetch-valhalla-bbox.sh",
+    TILE_PREFETCH_TILE_ROOT: "./data/valhalla-prefetch",
+    TILE_PREFETCH_OSM_PREFIX: "prefetch",
+    TILE_PREFETCH_HALF_LAT: 0.01,
+    TILE_PREFETCH_HALF_LON: 0.01,
+    TILE_PREFETCH_GRID_DEGREES: 0.01,
+    TILE_PREFETCH_LOOKAHEAD_CHUNKS: 1,
+    TILE_PREFETCH_LOOKAHEAD_METERS: 800,
+    TILE_PREFETCH_MIN_INTERVAL_SECONDS: 60,
+    TILE_PREFETCH_MAX_QUEUE: 4,
+    TILE_PREFETCH_RESTART_VALHALLA: true,
+    ...overrides,
+  };
+}
+
+export const validPayload = {
+  latitude: 45.0,
+  longitude: 11.0,
+  speedKmh: 72.5,
+  course: 0,
+  horizontalAccuracyMeters: 6,
+  timestamp: "2026-06-17T20:30:00Z",
+  sessionId: "550e8400-e29b-41d4-a716-446655440000",
+};

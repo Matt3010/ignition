@@ -1,0 +1,79 @@
+services:
+  backend:
+    build:
+      context: .
+    platform: linux/arm64/v8
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://road:road@postgres:5432/road_context
+      VALHALLA_BASE_URL: http://valhalla:8002
+      ROAD_CONTEXT_PROVIDER: valhalla
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valhalla:
+        condition: service_healthy
+    networks:
+      - road-context
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    build:
+      context: ./docker/postgres
+    platform: linux/arm64/v8
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: road_context
+      POSTGRES_USER: road
+      POSTGRES_PASSWORD: road
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    networks:
+      - road-context
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U road -d road_context"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    platform: linux/arm64/v8
+    entrypoint: ["valhalla_service"]
+    command: ["/custom_files/valhalla.json", "1"]
+    restart: unless-stopped
+    environment:
+      server_threads: 2
+      serve_tiles: "true"
+      build_elevation: "false"
+      build_admins: "false"
+      build_time_zones: "false"
+      force_rebuild: "false"
+    volumes:
+      - ${VALHALLA_TILE_DIR:-./data/valhalla}:/custom_files
+    ports:
+      - "8002:8002"
+    networks:
+      - road-context
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8002/status >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+
+networks:
+  road-context:
+    driver: bridge
