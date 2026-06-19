@@ -149,26 +149,9 @@ npm run alerts:purge-non-osm
 
 ## OpenStreetMap e Valhalla
 
-Scaricare un estratto regionale, per esempio Nord-Est/Veneto:
+Il flusso principale è on-demand: il backend scarica bbox piccole attorno alla posizione GPS e costruisce tile locali per quel chunk. Non c'è una regione italiana hardcoded come requisito operativo.
 
-```bash
-OSM_EXTRACT_URL=https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf \
-OSM_REGION=veneto \
-npm run osm:download
-```
-
-Per sviluppo o test non serve partire da una regione intera. Si può ritagliare una bounding box piccola e costruire tile solo per quella zona:
-
-```bash
-OSM_EXTRACT_URL=https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf \
-OSM_REGION=veneto-test \
-OSM_BBOX=11.80,45.35,12.10,45.55 \
-npm run osm:bbox
-```
-
-`OSM_BBOX` usa il formato `minLon,minLat,maxLon,maxLat`. Lo script usa `osmium` se installato, altrimenti prova il container `ghcr.io/osmcode/osmium-tool`. Questo evita di compilare tile per aree grandi, ma Valhalla richiede comunque tile locali già costruite: non è pensato per scaricare dati OSM a ogni richiesta GPS.
-
-Per scaricare solo la bbox richiesta, senza prima scaricare un estratto regionale:
+Download manuale di una bbox piccola:
 
 ```bash
 OSM_REGION=bbox-test \
@@ -176,33 +159,34 @@ OSM_BBOX=10.995,44.995,11.010,45.010 \
 npm run osm:bbox:direct
 ```
 
-Questo usa l'endpoint pubblico OpenStreetMap `/api/0.6/map`, adatto solo a bbox piccole. Per aree più grandi usare estratti regionali Geofabrik + `npm run osm:bbox`.
+`OSM_BBOX` usa il formato `minLon,minLat,maxLon,maxLat`. Questo usa l'endpoint pubblico OpenStreetMap `/api/0.6/map`, adatto solo a bbox piccole. È lo stesso modello usato dal prefetch runtime.
 
 Costruire tile Valhalla:
 
 ```bash
 OSM_DATA_DIR=./data/osm \
 VALHALLA_TILE_DIR=./data/valhalla \
-OSM_REGION=veneto \
+OSM_REGION=bbox-test \
 npm run valhalla:build
 ```
 
 ## Prefetch Tile Operativo
 
-In modalità reale il backend usa sempre il prefetch tile. Quando riceve un campione GPS garantisce prima il chunk corrente, poi chiama Valhalla; dopo la risposta accoda in background i chunk successivi davanti alla moto.
+In modalità reale il backend usa il prefetch tile on-demand. Quando riceve un campione GPS calcola il chunk corrente, lo mette in coda se non è già stato richiesto di recente, chiama Valhalla con le tile attive e poi accoda in background i chunk successivi davanti alla moto.
 
 Il prefetch operativo usa lo stesso flusso reale dei test a chunk:
 
 ```txt
 GPS ricevuto
-  -> ensure bbox corrente
-  -> download OSM bbox se manca
+  -> calcolo bbox corrente
+  -> accodamento prefetch se il chunk non è già recente/in coda
+  -> risposta API con tile attive
+  -> download OSM bbox in background se manca
   -> conversione PBF se manca
   -> import alert statici OSM in PostGIS
   -> build tile Valhalla se manca
   -> riavvio opzionale Valhalla sul chunk corrente
-  -> map matching Valhalla
-  -> risposta API
+  -> eventi successivi usano il chunk pronto
   -> prefetch asincrono dei chunk di lookahead
 ```
 
@@ -249,10 +233,13 @@ Variabili principali:
 - `TILE_PREFETCH_LOOKAHEAD_METERS`: distanza tra chunk futuri.
 - `TILE_PREFETCH_MIN_INTERVAL_SECONDS`: anti-rebuild sullo stesso chunk.
 - `TILE_PREFETCH_MAX_QUEUE`: limite della coda locale.
+- `TILE_PREFETCH_CLEANUP_INTERVAL_SECONDS`: ogni quanto provare la cleanup. Default `3600`.
+- `TILE_PREFETCH_RETENTION_HOURS`: cancella chunk prefetch più vecchi. Default `24`.
+- `TILE_PREFETCH_MAX_STORED_CHUNKS`: numero massimo di chunk prefetch conservati. Default `200`.
 - `TILE_PREFETCH_RESTART_VALHALLA`: se `true`, riavvia Valhalla sul tile appena costruito.
 - `VALHALLA_ACTIVE_TILE_DIR`: directory attiva montata da Valhalla, usata quando il backend gira in Docker. Il chunk pronto viene copiato qui prima del restart.
 - `VALHALLA_CONTAINER_NAME`: nome container Valhalla da riavviare con Docker CLI. In Compose vale `road-context-valhalla`.
-- `TILE_PREFETCH_MAX_AGE_HOURS`: TTL dei tile prefetch. Default 168 ore.
+- `TILE_PREFETCH_MAX_AGE_HOURS`: TTL dei tile prefetch. Default 24 ore.
 - `TILE_PREFETCH_IMPORT_ALERTS`: se `true`, importa alert statici OSM dopo download bbox. Default `true`.
 - `TILE_PREFETCH_RETRIES`: tentativi per download/import/build/restart. Default `2`.
 - `TILE_PREFETCH_RETRY_DELAY_SECONDS`: pausa tra retry. Default `3`.
@@ -271,6 +258,8 @@ Ogni tile prefetch contiene `prefetch-meta.json` con `bbox`, `downloadedAt`, `bu
 - `TILE_PREFETCH_FORCE=true`.
 
 Quando ricostruisce, lo script reimporta anche gli alert OSM della bbox. Se il tile e fresco ma il file `.osm` locale esiste, l'import viene comunque rieseguito in modo idempotente, cosi un DB svuotato torna coerente senza inventare dati. Se `VALHALLA_ACTIVE_TILE_DIR` e impostato, il chunk pronto viene copiato nella directory attiva montata da Valhalla e poi il container viene riavviato.
+
+La cleanup automatica gira in modo asincrono e solo su `TILE_PREFETCH_TILE_ROOT`: cancella chunk scaduti, elimina i file OSM corrispondenti in `OSM_DATA_DIR`, rispetta `TILE_PREFETCH_MAX_STORED_CHUNKS`, protegge i chunk in coda/in esecuzione e non tocca mai `VALHALLA_TILE_DIR` / `VALHALLA_ACTIVE_TILE_DIR`.
 
 `GET /api/v1/tile-prefetch/status` espone anche ultimo `bbox`, `tileDir`, `downloadedAt`, `builtAt`, stato import OSM, record importati e record disattivati.
 
@@ -462,44 +451,13 @@ I test non richiedono servizi Internet. Coprono validazione, geodesia, maxspeed,
 
 ## Raspberry Pi
 
-Procedura consigliata: costruire tile su una macchina piu potente, pacchettarle, copiarle sul Raspberry e avviare Compose con volume bind mount.
-
-Preparazione tile su macchina sviluppo:
-
-```bash
-OSM_REGION=veneto \
-OSM_EXTRACT_URL=https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf \
-npm run osm:download
-
-OSM_REGION=veneto \
-VALHALLA_TILE_DIR=./data/valhalla-veneto \
-npm run valhalla:build
-
-OSM_REGION=veneto \
-VALHALLA_TILE_DIR=./data/valhalla-veneto \
-npm run valhalla:package
-```
-
-Output:
-
-- `dist-artifacts/veneto-valhalla-tiles-*.tar.gz`
-- `dist-artifacts/veneto-valhalla-tiles-*.manifest.json` con sha256 e size
-
-Copia sul Raspberry:
-
-```bash
-scp dist-artifacts/veneto-valhalla-tiles-*.tar.gz pi@raspberrypi.local:~/road-context/
-ssh pi@raspberrypi.local
-mkdir -p ~/road-context/data/valhalla
-tar -xzf ~/road-context/veneto-valhalla-tiles-*.tar.gz -C ~/road-context/data/valhalla
-```
+Procedura consigliata: avviare Compose e lasciare che il backend costruisca chunk on-demand tramite prefetch runtime. Non serve preparare una regione prima del test.
 
 Avvio su Raspberry:
 
 ```bash
 cd ~/road-context/backend
 cp .env.example .env
-export VALHALLA_TILE_DIR=~/road-context/data/valhalla
 docker compose -f docker-compose.yml up -d --build postgres valhalla backend
 docker compose -f docker-compose.yml exec backend node dist/scripts/migrate.js
 ```
@@ -521,10 +479,9 @@ docker compose exec backend node dist/scripts/raspberry-smoke.js
 
 Note Raspberry:
 
-- Evitare rebuild regionale direttamente su Raspberry 4/5 quando possibile.
 - Tenere `force_rebuild=false` su Valhalla.
 - Usare SSD/USB affidabile per `postgres-data` e tile Valhalla se la SD e lenta.
-- Per prefetch runtime dentro container serve accesso a Docker socket. Il Compose incluso lo monta gia; su ambienti piu chiusi usare backend su host o tile preparate offline.
+- Per prefetch runtime dentro container serve accesso a Docker socket. Il Compose incluso lo monta gia.
 
 ## Variabili Principali
 
@@ -555,7 +512,7 @@ Vedere `.env.example`. Le più importanti:
 - L'MVP gestisce soprattutto autovelox fissi e dati statici (`fixedSpeedCamera`, `roadHazard`, `roadWorks`).
 - Il parsing dei limiti condizionali è conservativo.
 - La qualità del map matching dipende dalle tile Valhalla e dal dato OSM disponibile.
-- Il prefetch runtime costruisce bbox piccole. Per copertura regionale stabile restano consigliate tile preparate offline.
+- Il primo ingresso in una zona nuova può produrre eventi non agganciati finché il chunk on-demand non è pronto.
 
 ## Troubleshooting
 

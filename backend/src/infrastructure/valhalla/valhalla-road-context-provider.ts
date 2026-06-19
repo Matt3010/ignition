@@ -14,7 +14,6 @@ interface ValhallaEdge {
   names?: string[];
   way_id?: string | number;
   road_class?: string;
-  speed?: number;
   speed_limit?: number | string;
   forward?: boolean;
   begin_heading?: number;
@@ -48,7 +47,7 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
         matched: true,
         roadId: edge.way_id === undefined || edge.way_id === null ? null : `way-${edge.way_id}`,
         roadName: displayRoadName(edge),
-        speedLimitKmh: parseMaxspeedToKmh(edge.speed_limit ?? edge.speed),
+        speedLimitKmh: parseMaxspeedToKmh(edge.speed_limit),
         roadType: edge.road_class ?? null,
         direction: edge.forward === false ? "backward" : edge.forward === true ? "forward" : "unknown",
         dataTimestamp: input.sample.timestamp,

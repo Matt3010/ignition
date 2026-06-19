@@ -2,8 +2,10 @@
 set -euo pipefail
 
 OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
-OSM_REGION="${OSM_REGION:-veneto}"
+OSM_HOST_DATA_DIR="${OSM_HOST_DATA_DIR:-}"
+OSM_REGION="${OSM_REGION:-prefetch}"
 VALHALLA_TILE_DIR="${VALHALLA_TILE_DIR:-./data/valhalla}"
+VALHALLA_BUILD_HOST_TILE_DIR="${VALHALLA_BUILD_HOST_TILE_DIR:-}"
 PBF="${OSM_DATA_DIR}/${OSM_REGION}.osm.pbf"
 OSM_XML="${OSM_DATA_DIR}/${OSM_REGION}.osm"
 
@@ -16,6 +18,8 @@ absolute_path() {
 
 OSM_DATA_DIR_ABS="$(absolute_path "$OSM_DATA_DIR")"
 VALHALLA_TILE_DIR_ABS="$(absolute_path "$VALHALLA_TILE_DIR")"
+OSM_MOUNT_DIR_ABS="${OSM_HOST_DATA_DIR:-$OSM_DATA_DIR_ABS}"
+VALHALLA_MOUNT_DIR_ABS="${VALHALLA_BUILD_HOST_TILE_DIR:-$VALHALLA_TILE_DIR_ABS}"
 
 if [[ -f "$PBF" ]]; then
   OSM_INPUT="/data/osm/${OSM_REGION}.osm.pbf"
@@ -32,7 +36,7 @@ mkdir -p "$VALHALLA_TILE_DIR_ABS"
 cp docker/valhalla/valhalla.json "$VALHALLA_TILE_DIR_ABS/valhalla.json"
 docker run --rm --platform linux/arm64/v8 \
   --entrypoint valhalla_build_tiles \
-  -v "${OSM_DATA_DIR_ABS}:/data/osm" \
-  -v "${VALHALLA_TILE_DIR_ABS}:/custom_files" \
+  -v "${OSM_MOUNT_DIR_ABS}:/data/osm" \
+  -v "${VALHALLA_MOUNT_DIR_ABS}:/custom_files" \
   ghcr.io/gis-ops/docker-valhalla/valhalla:latest \
   -c /custom_files/valhalla.json "$OSM_INPUT"

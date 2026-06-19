@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:drive": "ROAD_CONTEXT_PROVIDER=valhalla DRIVE_SOAK_REAL=true tsx scripts/drive-soak.ts",
     "test:drive:real": "ROAD_CONTEXT_PROVIDER=valhalla DRIVE_SOAK_REAL=true tsx scripts/drive-soak.ts",
+    "test:drive:real:auto": "bash scripts/drive-real-auto.sh",
     "test:drive:real:chunks": "bash scripts/drive-real-chunks.sh",
     "test:watch": "vitest",
     "lint": "eslint .",

@@ -20,6 +20,7 @@ import { createMockAlerts } from "./mock/mock-data.js";
 import { MockRoadContextProvider } from "./mock/mock-road-context-provider.js";
 import { registerErrorHandler } from "./http/plugins/error-handler.js";
 import { registerSessionRateLimit } from "./http/plugins/session-rate-limit.js";
+import { registerAppLogRoutes } from "./http/routes/app-log.routes.js";
 import { registerRoadContextRoutes } from "./http/routes/road-context.routes.js";
 import { registerSystemRoutes } from "./http/routes/system.routes.js";
 
@@ -78,6 +79,7 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
     config,
     dependencies.tilePrefetcher,
   );
+  await registerAppLogRoutes(app);
   await registerRoadContextRoutes(app, useCase);
   await registerSystemRoutes(app, {
     provider: dependencies.provider,

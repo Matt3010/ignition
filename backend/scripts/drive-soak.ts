@@ -1151,6 +1151,7 @@ function summaryPayload(event: string, elapsedSeconds: number): Record<string, u
     latenzaMediaMs: stats.iterations > 0 ? Number((stats.totalLatencyMs / stats.iterations).toFixed(1)) : 0,
     richiesteAlSecondo: Number((stats.iterations / elapsedSeconds).toFixed(2)),
     topStrade: topRoads(),
+    limitiMancanti: missingSpeedLimitRoads(),
     limiti: speedLimitBreakdown(),
     alertPerTipo: alertBreakdown(),
     unmatchedSamples: stats.unmatchedSamples.slice(0, 20),
@@ -1200,6 +1201,9 @@ function summaryWarnings(matchRate: number): string[] {
   if (realProviders && stats.iterations >= 100 && stats.alerts === 0) {
     warnings.push("nessun alert incontrato: percorso senza alert OSM/PostGIS vicini");
   }
+  if (realProviders && stats.iterations >= 100 && stats.nullLimits / stats.iterations > 0.5) {
+    warnings.push("molti limiti mancanti: verificare maxspeed OSM sulle strade elencate nel report");
+  }
   if (realProviders && stats.shortRouteSegments > 0) {
     warnings.push("Valhalla ha restituito almeno una tratta piu corta del target");
   }
@@ -1247,6 +1251,26 @@ function speedLimitBreakdown(): Array<Record<string, string | number | null>> {
     }));
 }
 
+function missingSpeedLimitRoads(): Array<Record<string, string | number | null>> {
+  return [...stats.roadStats.values()]
+    .filter((road) => road.matched > 0 && road.nullLimits > 0)
+    .sort((left, right) => {
+      if (right.nullLimits !== left.nullLimits) return right.nullLimits - left.nullLimits;
+      return right.distanceMeters - left.distanceMeters;
+    })
+    .slice(0, 30)
+    .map((road) => ({
+      label: road.label,
+      roadId: road.roadId,
+      roadType: road.roadType,
+      samples: road.samples,
+      nullLimitSamples: road.nullLimits,
+      nullLimitPct: Number(((road.nullLimits / road.samples) * 100).toFixed(1)),
+      km: Number((road.distanceMeters / 1000).toFixed(3)),
+      maxSpeedKmh: Number(road.maxSpeedKmh.toFixed(1)),
+    }));
+}
+
 function alertBreakdown(): Array<Record<string, string | number | null>> {
   return [...stats.alertStats.values()]
     .sort((left, right) => right.count - left.count)
@@ -1274,6 +1298,15 @@ function logBreakdowns(): void {
         .map((limit) => `${limit.speedLimitKmh ?? "n/d"} km/h (${limit.samples} campioni, ${limit.exceeded} over)`)
         .join(", ")}`,
     );
+  }
+  const missingLimits = missingSpeedLimitRoads().slice(0, 10);
+  if (missingLimits.length > 0) {
+    console.log("Strade senza maxspeed OSM:");
+    for (const road of missingLimits) {
+      console.log(
+        `- ${road.label} (${road.roadId ?? "roadId n/d"}, ${road.roadType ?? "tipo n/d"}): ${road.nullLimitSamples}/${road.samples} campioni senza limite (${road.nullLimitPct}%), ${road.km} km, velocita max ${road.maxSpeedKmh} km/h`,
+      );
+    }
   }
   const alerts = alertBreakdown();
   if (alerts.length > 0) {

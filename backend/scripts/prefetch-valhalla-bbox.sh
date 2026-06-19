@@ -4,6 +4,7 @@ set -euo pipefail
 OSM_REGION="${OSM_REGION:-prefetch}"
 OSM_BBOX="${OSM_BBOX:-}"
 VALHALLA_TILE_DIR="${VALHALLA_TILE_DIR:-./data/valhalla-prefetch/$OSM_REGION}"
+VALHALLA_BUILD_HOST_TILE_DIR="${VALHALLA_BUILD_HOST_TILE_DIR:-}"
 VALHALLA_ACTIVE_TILE_DIR="${VALHALLA_ACTIVE_TILE_DIR:-}"
 VALHALLA_HOST_TILE_DIR="${VALHALLA_HOST_TILE_DIR:-}"
 VALHALLA_CONTAINER_NAME="${VALHALLA_CONTAINER_NAME:-}"
@@ -148,7 +149,7 @@ update_import_metadata() {
     OSM_REGION="$OSM_REGION" \
     OSM_BBOX="$OSM_BBOX" \
     VALHALLA_TILE_DIR="$VALHALLA_TILE_DIR" \
-    node -e "const fs=require('fs'); const metaFile=process.env.META_FILE; let data={region:process.env.OSM_REGION,bbox:process.env.OSM_BBOX,tileDir:process.env.VALHALLA_TILE_DIR}; if (fs.existsSync(metaFile)) data=JSON.parse(fs.readFileSync(metaFile,'utf8')); let parsed=null; const outputFile=process.env.IMPORT_OUTPUT_FILE; if (outputFile && fs.existsSync(outputFile)) { const lines=fs.readFileSync(outputFile,'utf8').trim().split(/\\r?\\n/).reverse(); for (const line of lines) { const text=line.trim(); if (!text.startsWith('{') || !text.endsWith('}')) continue; try { parsed=JSON.parse(text); break; } catch {} } } data.lastImport={status:process.env.IMPORT_STATUS,at:new Date().toISOString(),records:parsed?.records ?? null,upserted:parsed?.upserted ?? null,deactivated:parsed?.deactivated ?? null,file:parsed?.file ?? null,bbox:parsed?.bbox ?? null}; fs.writeFileSync(metaFile, JSON.stringify(data,null,2)+'\n');"
+    node -e "const fs=require('fs'); const metaFile=process.env.META_FILE; let data={}; if (fs.existsSync(metaFile)) data=JSON.parse(fs.readFileSync(metaFile,'utf8')); data.region=process.env.OSM_REGION; data.bbox=process.env.OSM_BBOX; data.tileDir=process.env.VALHALLA_TILE_DIR; let parsed=null; const outputFile=process.env.IMPORT_OUTPUT_FILE; if (outputFile && fs.existsSync(outputFile)) { const lines=fs.readFileSync(outputFile,'utf8').trim().split(/\\r?\\n/).reverse(); for (const line of lines) { const text=line.trim(); if (!text.startsWith('{') || !text.endsWith('}')) continue; try { parsed=JSON.parse(text); break; } catch {} } } data.lastImport={status:process.env.IMPORT_STATUS,at:new Date().toISOString(),records:parsed?.records ?? null,upserted:parsed?.upserted ?? null,deactivated:parsed?.deactivated ?? null,file:parsed?.file ?? null,bbox:parsed?.bbox ?? null}; fs.writeFileSync(metaFile, JSON.stringify(data,null,2)+'\n');"
 }
 
 import_osm_alerts() {
@@ -221,7 +222,7 @@ echo "{\"event\":\"tile_prefetch_started\",\"region\":\"$OSM_REGION\",\"bbox\":\
 downloaded_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 retry_command osm_bbox_download env OSM_REGION="$OSM_REGION" OSM_BBOX="$OSM_BBOX" npm run osm:bbox:direct
 rm -rf "$VALHALLA_TILE_DIR"
-retry_command valhalla_build env OSM_REGION="$OSM_REGION" VALHALLA_TILE_DIR="$VALHALLA_TILE_DIR" npm run valhalla:build
+retry_command valhalla_build env OSM_REGION="$OSM_REGION" VALHALLA_TILE_DIR="$VALHALLA_TILE_DIR" VALHALLA_BUILD_HOST_TILE_DIR="$VALHALLA_BUILD_HOST_TILE_DIR" npm run valhalla:build
 write_metadata "$downloaded_at"
 import_osm_alerts
 sync_active_tile_dir

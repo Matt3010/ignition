@@ -40,4 +40,17 @@ describe("Valhalla provider", () => {
     expect(result.roadId).toBe("way-76210046");
     expect(result.roadName).toBe("Strada residenziale senza nome");
   });
+
+  it("does not treat Valhalla routing speed as a legal speed limit", async () => {
+    const provider = new ValhallaRoadContextProvider({
+      traceAttributes: async () => ({
+        edges: [{ names: ["Via senza maxspeed"], way_id: 42, road_class: "service_other", speed: 25, forward: true }],
+        matched_points: [{ edge_index: 0, distance_from_trace_point: 3, type: "matched" }],
+      }),
+      health: async () => "up",
+    });
+    const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+    expect(result.matched).toBe(true);
+    expect(result.speedLimitKmh).toBeNull();
+  });
 });

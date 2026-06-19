@@ -46,9 +46,11 @@ export function parseOsmAlerts(xml: string, source = "osm"): OsmAlertParseResult
   const ways = parseWays(xml);
   const waysById = new Map(ways.map((way) => [way.id, way]));
   const relations = parseRelations(xml);
+  const speedCameraNodesCoveredByRelations = enforcementDeviceNodeIds(relations);
   const alerts: RoadAlert[] = [];
 
   for (const node of nodes.values()) {
+    if (speedCameraNodesCoveredByRelations.has(node.id) && isSpeedCamera(node.tags)) continue;
     const alert = alertFromElement("node", node.id, node.latitude, node.longitude, node.tags, source, null);
     if (alert) alerts.push(alert);
   }
@@ -70,6 +72,17 @@ export function parseOsmAlerts(xml: string, source = "osm"): OsmAlertParseResult
     elementsScanned: nodes.size + ways.length + relations.length,
     bounds: parseBounds(xml) ?? boundsFromNodes(nodes),
   };
+}
+
+function enforcementDeviceNodeIds(relations: OsmRelation[]): Set<string> {
+  const ids = new Set<string>();
+  for (const relation of relations) {
+    if (relation.tags.enforcement !== "maxspeed") continue;
+    for (const member of relation.members) {
+      if (member.type === "node" && (member.role === "device" || member.role === "via")) ids.add(member.ref);
+    }
+  }
+  return ids;
 }
 
 function alertFromRelation(

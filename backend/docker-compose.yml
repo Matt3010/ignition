@@ -10,14 +10,19 @@ services:
       VALHALLA_BASE_URL: http://valhalla:8002
       ROAD_CONTEXT_PROVIDER: valhalla
       OSM_DATA_DIR: /app/data/osm
+      OSM_HOST_DATA_DIR: ${OSM_HOST_DATA_DIR:-${PWD}/data/osm}
       VALHALLA_TILE_DIR: /app/data/valhalla
       VALHALLA_ACTIVE_TILE_DIR: /app/data/valhalla
+      VALHALLA_HOST_TILE_DIR: ${VALHALLA_HOST_TILE_DIR:-${PWD}/data/valhalla}
       VALHALLA_CONTAINER_NAME: road-context-valhalla
       TILE_PREFETCH_TILE_ROOT: /app/data/valhalla-prefetch
+      TILE_PREFETCH_HOST_TILE_ROOT: ${TILE_PREFETCH_HOST_TILE_ROOT:-${PWD}/data/valhalla-prefetch}
+      APP_DEBUG_LOG_DIR: /app/reports/app-debug-logs
     ports:
-      - "${PORT:-3000}:3000"
+      - "127.0.0.1:${PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
+      - ./reports:/app/reports
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
@@ -45,7 +50,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     networks:
       - road-context
     healthcheck:
@@ -71,7 +76,7 @@ services:
     volumes:
       - ${VALHALLA_TILE_DIR:-./data/valhalla}:/custom_files
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     networks:
       - road-context
     healthcheck:

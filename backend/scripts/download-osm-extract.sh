@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OSM_EXTRACT_URL="${OSM_EXTRACT_URL:-https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf}"
+OSM_EXTRACT_URL="${OSM_EXTRACT_URL:-}"
 OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
-OSM_REGION="${OSM_REGION:-veneto}"
+OSM_REGION="${OSM_REGION:-extract}"
+
+if [[ -z "$OSM_EXTRACT_URL" ]]; then
+  echo "Set OSM_EXTRACT_URL to an explicit .osm.pbf extract URL." >&2
+  exit 1
+fi
 
 mkdir -p "$OSM_DATA_DIR"
 target="$OSM_DATA_DIR/$OSM_REGION.osm.pbf"

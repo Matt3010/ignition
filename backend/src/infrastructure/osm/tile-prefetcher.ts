@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AppConfig } from "../../config/env.js";
@@ -52,20 +53,26 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
   private lastRegion: string | null = null;
   private lastError: string | null = null;
   private updatedAt: string | null = null;
+  private cleanupRunning = false;
+  private lastCleanupAt = 0;
 
   constructor(private readonly config: AppConfig) {
     this.recentlyQueued = new TtlCache(config.TILE_PREFETCH_MIN_INTERVAL_SECONDS * 1000);
   }
 
   async ensureCurrent(sample: GpsSample): Promise<void> {
+    this.maybeCleanup();
     const [currentPlan] = this.plan(sample, 0);
     if (!currentPlan) return;
     if (this.recentlyQueued.get(currentPlan.region)) return;
+    if (this.queue.some((queued) => queued.region === currentPlan.region)) return;
     this.recentlyQueued.set(currentPlan.region, true);
-    await this.runPlan(currentPlan, true);
+    this.queue.unshift(currentPlan);
+    void this.drain();
   }
 
   enqueueLookahead(sample: GpsSample): void {
+    this.maybeCleanup();
     const plans = this.plan(sample, this.config.TILE_PREFETCH_LOOKAHEAD_CHUNKS).slice(1);
 
     for (const plan of plans) {
@@ -100,7 +107,8 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
   }
 
   status(): TilePrefetchStatus {
-    const metadata = this.lastRegion ? readPrefetchMetadata(path.resolve(this.config.TILE_PREFETCH_TILE_ROOT, this.lastRegion)) : null;
+    const tileDir = this.lastRegion ? path.resolve(this.config.TILE_PREFETCH_TILE_ROOT, this.lastRegion) : null;
+    const metadata = tileDir ? readPrefetchMetadata(tileDir) : null;
     return {
       enabled: true,
       queued: this.queue.length,
@@ -110,7 +118,7 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
       failed: this.failed,
       lastRegion: this.lastRegion,
       lastBbox: metadata?.bbox ?? null,
-      lastTileDir: metadata?.tileDir ?? (this.lastRegion ? path.resolve(this.config.TILE_PREFETCH_TILE_ROOT, this.lastRegion) : null),
+      lastTileDir: tileDir,
       lastDownloadedAt: metadata?.downloadedAt ?? null,
       lastBuiltAt: metadata?.builtAt ?? null,
       lastImportStatus: metadata?.lastImport?.status ?? null,
@@ -129,7 +137,7 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
       while (this.queue.length > 0) {
         const plan = this.queue.shift();
         if (!plan) continue;
-        await this.runPlan(plan, false);
+        await this.runPlan(plan);
       }
     } finally {
       this.running = false;
@@ -137,17 +145,22 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
     }
   }
 
-  private async runPlan(plan: TilePrefetchPlanItem, throwOnFailure: boolean): Promise<void> {
+  private async runPlan(plan: TilePrefetchPlanItem): Promise<void> {
     this.lastRegion = plan.region;
     this.updatedAt = new Date().toISOString();
     const tileDir = path.resolve(this.config.TILE_PREFETCH_TILE_ROOT, plan.region);
+    const hostTileDir = this.config.TILE_PREFETCH_HOST_TILE_ROOT
+      ? path.resolve(this.config.TILE_PREFETCH_HOST_TILE_ROOT, plan.region)
+      : "";
     try {
       await execFileAsync("bash", [this.config.TILE_PREFETCH_SCRIPT], {
         env: {
           ...process.env,
+          OSM_HOST_DATA_DIR: this.config.OSM_HOST_DATA_DIR ?? "",
           OSM_REGION: plan.region,
           OSM_BBOX: plan.bbox,
           VALHALLA_TILE_DIR: tileDir,
+          VALHALLA_BUILD_HOST_TILE_DIR: hostTileDir,
           VALHALLA_ACTIVE_TILE_DIR: this.config.VALHALLA_ACTIVE_TILE_DIR ?? "",
           VALHALLA_HOST_TILE_DIR: this.config.VALHALLA_HOST_TILE_DIR ?? "",
           VALHALLA_CONTAINER_NAME: this.config.VALHALLA_CONTAINER_NAME ?? "",
@@ -168,10 +181,40 @@ export class LocalScriptTilePrefetcher implements TilePrefetcher {
       this.failed += 1;
       this.lastError = error instanceof Error ? error.message : "Unknown tile prefetch error";
       this.recentlyQueued.delete(plan.region);
-      if (throwOnFailure) throw error;
+      console.error(
+        JSON.stringify({
+          event: "tile_prefetch_failed",
+          region: plan.region,
+          bbox: plan.bbox,
+          error: this.lastError,
+        }),
+      );
     } finally {
       this.updatedAt = new Date().toISOString();
     }
+  }
+
+  private maybeCleanup(): void {
+    const now = Date.now();
+    if (this.cleanupRunning) return;
+    if (now - this.lastCleanupAt < this.config.TILE_PREFETCH_CLEANUP_INTERVAL_SECONDS * 1000) return;
+    this.cleanupRunning = true;
+    this.lastCleanupAt = now;
+    const protectedRegions = new Set(this.queue.map((queued) => queued.region));
+    if (this.running && this.lastRegion) protectedRegions.add(this.lastRegion);
+    void cleanupPrefetchStorage(this.config, protectedRegions)
+      .catch((error) => {
+        console.error(
+          JSON.stringify({
+            event: "tile_prefetch_cleanup_failed",
+            error: error instanceof Error ? error.message : "Unknown cleanup error",
+          }),
+        );
+      })
+      .finally(() => {
+        this.cleanupRunning = false;
+        this.updatedAt = new Date().toISOString();
+      });
   }
 }
 
@@ -196,4 +239,102 @@ function readPrefetchMetadata(tileDir: string): PrefetchMetadata | null {
   } catch {
     return null;
   }
+}
+
+interface PrefetchChunkCandidate {
+  region: string;
+  tileDir: string;
+  timestampMs: number;
+  ageHours: number;
+  protected: boolean;
+}
+
+async function cleanupPrefetchStorage(config: AppConfig, protectedRegions: Set<string>): Promise<void> {
+  const root = path.resolve(config.TILE_PREFETCH_TILE_ROOT);
+  const activeDirs = [config.VALHALLA_TILE_DIR, config.VALHALLA_ACTIVE_TILE_DIR]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => path.resolve(value));
+  if (activeDirs.includes(root)) {
+    console.error(
+      JSON.stringify({
+        event: "tile_prefetch_cleanup_skipped",
+        reason: "prefetch_root_is_active_valhalla_dir",
+        root,
+      }),
+    );
+    return;
+  }
+
+  const entries = await readdir(root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const now = Date.now();
+  const candidates: PrefetchChunkCandidate[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    const tileDir = path.join(root, entry.name);
+    const metadata = readPrefetchMetadata(tileDir);
+    const stats = await stat(tileDir);
+    const timestampMs = parseMetadataTimestamp(metadata) ?? stats.mtimeMs;
+    candidates.push({
+      region: metadata?.region ?? entry.name,
+      tileDir,
+      timestampMs,
+      ageHours: (now - timestampMs) / 36e5,
+      protected: protectedRegions.has(metadata?.region ?? entry.name),
+    });
+  }
+
+  const deleted = new Set<string>();
+  for (const candidate of candidates) {
+    if (candidate.protected) continue;
+    if (candidate.ageHours <= config.TILE_PREFETCH_RETENTION_HOURS) continue;
+    await deletePrefetchChunk(config, candidate, "expired");
+    deleted.add(candidate.region);
+  }
+
+  const remaining = candidates
+    .filter((candidate) => !deleted.has(candidate.region))
+    .sort((left, right) => right.timestampMs - left.timestampMs);
+  let storedCount = remaining.length;
+  for (const candidate of [...remaining].reverse()) {
+    if (storedCount <= config.TILE_PREFETCH_MAX_STORED_CHUNKS) break;
+    if (candidate.protected) continue;
+    await deletePrefetchChunk(config, candidate, "max_stored_chunks");
+    storedCount -= 1;
+  }
+}
+
+async function deletePrefetchChunk(
+  config: AppConfig,
+  candidate: PrefetchChunkCandidate,
+  reason: "expired" | "max_stored_chunks",
+): Promise<void> {
+  await rm(candidate.tileDir, { recursive: true, force: true });
+  const osmFiles = [
+    path.resolve(config.OSM_DATA_DIR, `${candidate.region}.osm`),
+    path.resolve(config.OSM_DATA_DIR, `${candidate.region}.osm.pbf`),
+  ];
+  for (const file of osmFiles) {
+    await rm(file, { force: true });
+  }
+  console.log(
+    JSON.stringify({
+      event: "tile_prefetch_cleanup_deleted",
+      reason,
+      region: candidate.region,
+      tileDir: candidate.tileDir,
+      ageHours: Number(candidate.ageHours.toFixed(2)),
+      osmFiles,
+    }),
+  );
+}
+
+function parseMetadataTimestamp(metadata: PrefetchMetadata | null): number | null {
+  const value = metadata?.builtAt ?? metadata?.downloadedAt;
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 }

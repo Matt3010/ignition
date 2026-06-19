@@ -1,5 +1,8 @@
 import { buildApp } from "../../src/app.js";
 import { testConfig, validPayload } from "../fixtures/config.js";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 describe("HTTP API", () => {
   it("serves health and ready in mock mode", async () => {
@@ -60,6 +63,39 @@ describe("HTTP API", () => {
     expect(openapi.statusCode).toBe(200);
     expect(config.json().supportedAlertTypes).toContain("roadWorks");
     expect(prefetch.json().enabled).toBe(false);
+    await app.close();
+  });
+
+  it("stores app debug logs as session jsonl", async () => {
+    const logDir = await mkdtemp(path.join(tmpdir(), "app-debug-logs-"));
+    const app = await buildApp(testConfig({ APP_DEBUG_LOG_DIR: logDir }));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/app-logs",
+      payload: {
+        sessionId: validPayload.sessionId,
+        createdAt: "2026-06-17T20:30:01Z",
+        kind: "road_context_event",
+        platform: "ios",
+        appName: "RoadRecorder",
+        appVersion: "1.0",
+        backendBaseURL: "https://roads.scanferlamatteo.work",
+        message: "72 km/h, Via Test, limite 70 km/h, velocita ok, nessun alert vicino",
+        counters: {
+          sentCount: 1,
+          errorCount: 0,
+          localEventCount: 1,
+        },
+        event: {
+          debugLine: "72 km/h, Via Test, limite 70 km/h, velocita ok, nessun alert vicino",
+        },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().stored).toBe(true);
+    const stored = await readFile(path.join(logDir, `${validPayload.sessionId}.jsonl`), "utf8");
+    expect(stored).toContain("road_context_event");
+    expect(stored).toContain("72 km/h");
     await app.close();
   });
 });

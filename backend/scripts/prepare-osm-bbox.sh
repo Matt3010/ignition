@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OSM_EXTRACT_URL="${OSM_EXTRACT_URL:-https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf}"
+OSM_EXTRACT_URL="${OSM_EXTRACT_URL:-}"
 OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
-OSM_REGION="${OSM_REGION:-veneto}"
+OSM_REGION="${OSM_REGION:-bbox-extract}"
 OSM_BBOX="${OSM_BBOX:-}"
+
+if [[ -z "$OSM_EXTRACT_URL" ]]; then
+  echo "Set OSM_EXTRACT_URL to an explicit .osm.pbf extract URL, or use npm run osm:bbox:direct for small on-demand bboxes." >&2
+  exit 1
+fi
 
 if [[ -z "$OSM_BBOX" ]]; then
   echo "Set OSM_BBOX=minLon,minLat,maxLon,maxLat, for example:" >&2

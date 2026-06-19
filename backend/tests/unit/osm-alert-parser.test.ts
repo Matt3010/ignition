@@ -74,7 +74,7 @@ describe("OSM alert parser", () => {
     expect(result.alerts[3].bearing).toBeCloseTo(0);
   });
 
-  it("keeps separate OSM enforcement relations on the same device", () => {
+  it("keeps directional OSM enforcement relations and suppresses the generic device duplicate", () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <osm version="0.6">
   <node id="1" lat="45.0000" lon="11.0000"/>
@@ -105,10 +105,9 @@ describe("OSM alert parser", () => {
 
     const result = parseOsmAlerts(xml);
 
-    expect(result.alerts).toHaveLength(3);
-    expect(result.alerts.filter((alert) => alert.type === "fixedSpeedCamera")).toHaveLength(3);
-    expect(result.alerts[0].bearing).toBeNull();
-    expect(result.alerts[1].bearing).toBeCloseTo(0);
-    expect(result.alerts[2].bearing).toBeCloseTo(90);
+    expect(result.alerts).toHaveLength(2);
+    expect(result.alerts.filter((alert) => alert.type === "fixedSpeedCamera")).toHaveLength(2);
+    expect(result.alerts[0].bearing).toBeCloseTo(0);
+    expect(result.alerts[1].bearing).toBeCloseTo(90);
   });
 });

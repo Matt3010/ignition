@@ -27,7 +27,6 @@ export class ValhallaClient {
               "edge.names",
               "edge.way_id",
               "edge.road_class",
-              "edge.speed",
               "edge.speed_limit",
               "edge.forward",
               "edge.begin_heading",
