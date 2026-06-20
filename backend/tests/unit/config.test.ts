@@ -9,4 +9,8 @@ describe("config", () => {
       }),
     ).toThrow("ROAD_CONTEXT_PROVIDER=mock is not allowed in production");
   });
+
+  it("treats empty optional extract URL as unset", () => {
+    expect(loadConfig({ OSM_EXTRACT_URL: "" }).OSM_EXTRACT_URL).toBeUndefined();
+  });
 });

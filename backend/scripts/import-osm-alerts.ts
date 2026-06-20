@@ -1,4 +1,4 @@
-import { stat, readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createPool } from "../src/infrastructure/database/postgres.js";
 import { PostgisAlertRepository } from "../src/infrastructure/repositories/postgis-alert-repository.js";
@@ -71,14 +71,29 @@ async function parseArgs(args: string[]): Promise<CliOptions> {
   for (let index = 0; index < args.length; index += 2) {
     result.set(args[index].replace(/^--/, ""), args[index + 1]);
   }
-  const file = result.get("file") ?? join(config.OSM_DATA_DIR, `${config.OSM_REGION}.osm`);
-  await stat(file);
+  const file = result.get("file") ?? (await defaultOsmAlertFile());
   return {
     file,
     source: result.get("source") ?? "osm",
     version: result.get("version") ?? new Date().toISOString(),
     deactivateStale: parseBoolean(result.get("deactivate-stale") ?? process.env.OSM_ALERT_DEACTIVATE_STALE, true),
   };
+}
+
+async function defaultOsmAlertFile(): Promise<string> {
+  const candidates = [
+    join(config.OSM_DATA_DIR, `${config.OSM_REGION}.alerts.osm`),
+    join(config.OSM_DATA_DIR, `${config.OSM_REGION}.osm`),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next supported OSM alert source.
+    }
+  }
+  throw new Error(`Missing OSM alert source. Expected ${candidates.join(" or ")}`);
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {

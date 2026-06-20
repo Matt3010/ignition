@@ -6,7 +6,6 @@ import { roundMeters } from "../../domain/services/geo.js";
 import type { AlertRepository } from "../ports/alert-repository.js";
 import type { RoadContextProvider } from "../ports/road-context-provider.js";
 import type { SessionTraceStore } from "../../domain/services/session-trace.js";
-import type { TilePrefetcher } from "../ports/tile-prefetcher.js";
 
 export class GetRoadContextUseCase {
   private readonly roadContextCache: TtlCache<string, RoadContextResponse>;
@@ -17,7 +16,6 @@ export class GetRoadContextUseCase {
     private readonly alertRepository: AlertRepository,
     private readonly traceStore: SessionTraceStore,
     private readonly config: AppConfig,
-    private readonly tilePrefetcher?: TilePrefetcher,
   ) {
     const ttlMs = config.CACHE_TTL_SECONDS * 1000;
     this.roadContextCache = new TtlCache(ttlMs);
@@ -31,9 +29,7 @@ export class GetRoadContextUseCase {
 
     const trace = this.traceStore.add(sample);
     const previousState = this.traceStore.getState(sample.sessionId);
-    await this.tilePrefetcher?.ensureCurrent(sample);
     const match = await this.provider.match({ sample, trace, previousState, scenario });
-    this.tilePrefetcher?.enqueueLookahead(sample);
 
     if (match.matched) {
       this.traceStore.setState(sample.sessionId, {
@@ -62,6 +58,8 @@ export class GetRoadContextUseCase {
       userCourse: sample.course,
       direction: match.direction,
       directionToleranceDegrees: this.config.ALERT_DIRECTION_TOLERANCE_DEGREES,
+      unassignedMaxDistanceMeters: this.config.ALERT_UNASSIGNED_RADIUS_METERS,
+      unmatchedMaxDistanceMeters: this.config.ALERT_UNMATCHED_RADIUS_METERS,
       now: new Date(sample.timestamp),
       limit: 10,
     }).map((alert) => ({
@@ -69,6 +67,7 @@ export class GetRoadContextUseCase {
       type: alert.type,
       distanceMeters: roundMeters(alert.distanceMeters),
       speedLimitKmh: alert.speedLimitKmh,
+      speedLimitSource: alert.speedLimitSource,
       latitude: alert.latitude,
       longitude: alert.longitude,
       direction: alert.direction ?? "unknown",
@@ -80,6 +79,7 @@ export class GetRoadContextUseCase {
       roadId: match.roadId,
       roadName: match.roadName,
       speedLimitKmh: match.speedLimitKmh,
+      speedLimitSource: match.speedLimitSource,
       roadType: match.roadType,
       confidence: match.confidence,
       direction: match.direction,

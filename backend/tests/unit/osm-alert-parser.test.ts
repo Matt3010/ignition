@@ -7,7 +7,7 @@ describe("OSM alert parser", () => {
   <bounds minlat="44.9900" minlon="10.9900" maxlat="45.0100" maxlon="11.0100"/>
   <node id="1" lat="45.0001" lon="11.0001">
     <tag k="highway" v="speed_camera"/>
-    <tag k="maxspeed" v="50"/>
+    <tag k="maxspeed" v="IT:urban"/>
     <tag k="direction" v="forward"/>
     <tag k="bearing" v="90"/>
   </node>
@@ -54,6 +54,7 @@ describe("OSM alert parser", () => {
       latitude: 45.0001,
       longitude: 11.0001,
       speedLimitKmh: 50,
+      speedLimitSource: "implicit",
       direction: "forward",
       bearing: 90,
       source: "osm",
@@ -63,6 +64,7 @@ describe("OSM alert parser", () => {
     expect(result.alerts[2]).toMatchObject({
       roadId: "way-10",
       speedLimitKmh: 48,
+      speedLimitSource: "explicit",
     });
     expect(result.alerts[3]).toMatchObject({
       type: "fixedSpeedCamera",

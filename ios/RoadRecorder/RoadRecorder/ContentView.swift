@@ -207,12 +207,13 @@ private struct EventRow: View {
         guard let limit = response.speedLimitKmh else {
             return "limite: non verificabile"
         }
+        let source = DriveEventFormatter.speedLimitSourceText(response.speedLimitSource)
         let speed = event.sample.speedKmh
         if speed > Double(limit) + 2 {
             let delta = Int((speed - Double(limit)).rounded())
-            return "limite: \(limit) km/h, sopra di \(delta) km/h"
+            return "limite: \(limit) km/h (\(source)), sopra di \(delta) km/h"
         }
-        return "limite: \(limit) km/h, ok"
+        return "limite: \(limit) km/h (\(source)), ok"
     }
 
     private func limitCheckColor(_ response: RoadContextResponse) -> Color {
@@ -243,7 +244,7 @@ private struct EventAlertLine: View {
             Label("\(alert.type): \(Int(alert.distanceMeters.rounded())) m", systemImage: "camera.fill")
                 .foregroundStyle(.orange)
             Text("id: \(alert.id)")
-            Text("limite alert: \(alert.speedLimitKmh.map { "\($0) km/h" } ?? "n/d"), direzione: \(alert.direction), confidenza: \(percent(alert.confidence))")
+            Text("limite alert: \(alert.speedLimitKmh.map { "\($0) km/h" } ?? "n/d") (\(DriveEventFormatter.speedLimitSourceText(alert.speedLimitSource))), direzione: \(alert.direction), confidenza: \(percent(alert.confidence))")
             Text(String(format: "posizione alert: %.5f, %.5f", alert.latitude, alert.longitude))
         }
         .padding(.leading, 2)

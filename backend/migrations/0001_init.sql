@@ -19,6 +19,7 @@ create table if not exists road_alerts (
   longitude double precision not null check (longitude between -180 and 180),
   geometry geometry(Point, 4326) not null,
   speed_limit_kmh integer null check (speed_limit_kmh > 0),
+  speed_limit_source text not null default 'unknown' check (speed_limit_source in ('explicit', 'implicit', 'unknown')),
   direction text null check (direction in ('forward', 'backward', 'unknown')),
   bearing double precision null check (bearing >= 0 and bearing < 360),
   road_id text null,

@@ -9,21 +9,18 @@ services:
       DATABASE_URL: postgres://road:road@postgres:5432/road_context
       VALHALLA_BASE_URL: http://valhalla:8002
       ROAD_CONTEXT_PROVIDER: valhalla
+      OSM_EXTRACT_PRESET: ${OSM_EXTRACT_PRESET:-italy}
+      OSM_EXTRACT_URL: ${OSM_EXTRACT_URL:-}
+      OSM_REGION: ${OSM_REGION:-italy}
       OSM_DATA_DIR: /app/data/osm
       OSM_HOST_DATA_DIR: ${OSM_HOST_DATA_DIR:-${PWD}/data/osm}
       VALHALLA_TILE_DIR: /app/data/valhalla
-      VALHALLA_ACTIVE_TILE_DIR: /app/data/valhalla
-      VALHALLA_HOST_TILE_DIR: ${VALHALLA_HOST_TILE_DIR:-${PWD}/data/valhalla}
-      VALHALLA_CONTAINER_NAME: road-context-valhalla
-      TILE_PREFETCH_TILE_ROOT: /app/data/valhalla-prefetch
-      TILE_PREFETCH_HOST_TILE_ROOT: ${TILE_PREFETCH_HOST_TILE_ROOT:-${PWD}/data/valhalla-prefetch}
       APP_DEBUG_LOG_DIR: /app/reports/app-debug-logs
     ports:
       - "127.0.0.1:${PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,6 +33,38 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  osm-refresh:
+    build:
+      context: .
+    platform: linux/arm64/v8
+    restart: unless-stopped
+    profiles: ["maintenance"]
+    command: ["npm", "run", "osm:refresh:loop"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://road:road@postgres:5432/road_context
+      OSM_EXTRACT_PRESET: ${OSM_EXTRACT_PRESET:-italy}
+      OSM_EXTRACT_URL: ${OSM_EXTRACT_URL:-}
+      OSM_REGION: ${OSM_REGION:-italy}
+      OSM_DATA_DIR: /app/data/osm
+      OSM_HOST_DATA_DIR: ${OSM_HOST_DATA_DIR:-${PWD}/data/osm}
+      VALHALLA_TILE_DIR: /app/data/valhalla
+      VALHALLA_STAGING_TILE_DIR: /app/data/valhalla.next
+      VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${VALHALLA_STAGING_BUILD_HOST_TILE_DIR:-${PWD}/data/valhalla.next}
+      VALHALLA_CONTAINER_NAME: road-context-valhalla
+      OSM_REFRESH_INTERVAL_SECONDS: ${OSM_REFRESH_INTERVAL_SECONDS:-86400}
+      OSM_REFRESH_RUN_ON_START: ${OSM_REFRESH_RUN_ON_START:-false}
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valhalla:
+        condition: service_healthy
+    networks:
+      - road-context
 
   postgres:
     build:

@@ -19,6 +19,7 @@ export class PostgisAlertRepository implements AlertRepository {
         latitude,
         longitude,
         speed_limit_kmh,
+        speed_limit_source,
         direction,
         bearing,
         road_id,
@@ -48,6 +49,7 @@ export class PostgisAlertRepository implements AlertRepository {
       latitude: Number(row.latitude),
       longitude: Number(row.longitude),
       speedLimitKmh: row.speed_limit_kmh === null ? null : Number(row.speed_limit_kmh),
+      speedLimitSource: row.speed_limit_source,
       direction: row.direction,
       bearing: row.bearing === null ? null : Number(row.bearing),
       roadId: row.road_id,
@@ -69,12 +71,12 @@ export class PostgisAlertRepository implements AlertRepository {
         await client.query(
           `
           insert into road_alerts (
-            id, type, latitude, longitude, geometry, speed_limit_kmh, direction, bearing,
+            id, type, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source, direction, bearing,
             road_id, confidence, active, valid_from, valid_until, source, created_at, updated_at
           )
           values (
-            $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326), $5, $6, $7,
-            $8, $9, $10, $11, $12, $13, now(), now()
+            $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326), $5, $6, $7, $8,
+            $9, $10, $11, $12, $13, $14, now(), now()
           )
           on conflict (id) do update set
             type = excluded.type,
@@ -82,6 +84,7 @@ export class PostgisAlertRepository implements AlertRepository {
             longitude = excluded.longitude,
             geometry = excluded.geometry,
             speed_limit_kmh = excluded.speed_limit_kmh,
+            speed_limit_source = excluded.speed_limit_source,
             direction = excluded.direction,
             bearing = excluded.bearing,
             road_id = excluded.road_id,
@@ -98,6 +101,7 @@ export class PostgisAlertRepository implements AlertRepository {
             alert.latitude,
             alert.longitude,
             alert.speedLimitKmh,
+            alert.speedLimitSource,
             alert.direction,
             alert.bearing,
             alert.roadId,

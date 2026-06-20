@@ -3,7 +3,7 @@ set -euo pipefail
 
 OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
 OSM_HOST_DATA_DIR="${OSM_HOST_DATA_DIR:-}"
-OSM_REGION="${OSM_REGION:-prefetch}"
+OSM_REGION="${OSM_REGION:-italy}"
 VALHALLA_TILE_DIR="${VALHALLA_TILE_DIR:-./data/valhalla}"
 VALHALLA_BUILD_HOST_TILE_DIR="${VALHALLA_BUILD_HOST_TILE_DIR:-}"
 PBF="${OSM_DATA_DIR}/${OSM_REGION}.osm.pbf"
@@ -28,11 +28,12 @@ else
   if [[ -f "$OSM_XML" ]]; then
     echo "Found XML at $OSM_XML, but it must be converted with osmium first." >&2
   fi
-  echo "Run npm run osm:bbox:direct after installing osmium-tool, or let the script convert via Docker." >&2
+  echo "Run npm run osm:download before building Valhalla tiles." >&2
   exit 1
 fi
 
-mkdir -p "$VALHALLA_TILE_DIR_ABS"
+mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+chmod 0777 "$VALHALLA_TILE_DIR_ABS" "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
 cp docker/valhalla/valhalla.json "$VALHALLA_TILE_DIR_ABS/valhalla.json"
 docker run --rm --platform linux/arm64/v8 \
   --entrypoint valhalla_build_tiles \

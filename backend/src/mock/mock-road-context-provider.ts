@@ -36,6 +36,7 @@ export class MockRoadContextProvider implements RoadContextProvider {
         roadId: null,
         roadName: null,
         speedLimitKmh: null,
+        speedLimitSource: "unknown",
         roadType: null,
         confidence: 0.18,
         direction: "unknown",
@@ -58,6 +59,7 @@ export class MockRoadContextProvider implements RoadContextProvider {
       roadId,
       roadName: scenario === "parallelRoad" ? "Complanare mock" : "SR308 Mock",
       speedLimitKmh,
+      speedLimitSource: speedLimitKmh === null ? "unknown" : "explicit",
       roadType: scenario === "parallelRoad" ? "secondary_link" : "primary",
       direction: "forward",
       dataTimestamp:

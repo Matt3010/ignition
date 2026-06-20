@@ -7,6 +7,8 @@ export interface AlertFilterInput {
   userCourse: number | null;
   direction: Direction;
   directionToleranceDegrees: number;
+  unassignedMaxDistanceMeters: number;
+  unmatchedMaxDistanceMeters: number;
   now: Date;
   limit: number;
 }
@@ -17,11 +19,18 @@ export function filterRelevantAlerts(input: AlertFilterInput): AlertCandidate[] 
     .filter((alert) => !alert.validFrom || alert.validFrom <= input.now)
     .filter((alert) => !alert.validUntil || alert.validUntil >= input.now)
     .filter((alert) => {
-      if (input.roadId && alert.roadId && alert.roadId !== input.roadId) return false;
-      if (alert.direction && alert.direction !== "unknown" && input.direction !== "unknown") {
+      const directionIsComparable =
+        alert.roadId !== null &&
+        input.roadId !== null &&
+        alert.roadId === input.roadId &&
+        alert.bearing === null;
+      if (directionIsComparable && alert.direction && alert.direction !== "unknown" && input.direction !== "unknown") {
         if (alert.direction !== input.direction) return false;
       }
-      return isDirectionCompatible(input.userCourse, alert.bearing, input.directionToleranceDegrees);
+      if (!isDirectionCompatible(input.userCourse, alert.bearing, input.directionToleranceDegrees)) return false;
+      if (!input.roadId) return alert.distanceMeters <= input.unmatchedMaxDistanceMeters;
+      if (alert.roadId) return alert.roadId === input.roadId;
+      return alert.distanceMeters <= input.unassignedMaxDistanceMeters;
     })
     .map((alert) => ({
       ...alert,

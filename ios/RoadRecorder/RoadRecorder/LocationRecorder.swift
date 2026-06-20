@@ -191,8 +191,7 @@ final class LocationRecorder: NSObject, ObservableObject {
             let result = try await client.send(sample: sample, backendBaseURL: backendURL)
             let endedAtDate = Date()
             sentCount += 1
-            statusText = result.response.matched ? "Invio ok" : "Non agganciata"
-            prepend(RecorderEvent(
+            let event = RecorderEvent(
                 sample: sample,
                 response: result.response,
                 errorMessage: nil,
@@ -200,7 +199,9 @@ final class LocationRecorder: NSObject, ObservableObject {
                 requestEndedAt: isoFormatter.string(from: endedAtDate),
                 latencyMs: endedAtDate.timeIntervalSince(startedAtDate) * 1000,
                 httpStatusCode: result.httpStatusCode
-            ))
+            )
+            statusText = warmupOnly(event) ? "Aggancio in corso" : result.response.matched ? "Invio ok" : "Non agganciata"
+            prepend(event)
         } catch {
             let endedAtDate = Date()
             errorCount += 1
@@ -224,10 +225,13 @@ final class LocationRecorder: NSObject, ObservableObject {
     }
 
     private func prepend(_ event: RecorderEvent) {
+        let hiddenFromTimeline = warmupOnly(event)
         currentSessionEvents.append(event)
-        events.insert(event, at: 0)
-        if events.count > 80 {
-            events.removeLast(events.count - 80)
+        if !hiddenFromTimeline {
+            events.insert(event, at: 0)
+            if events.count > 80 {
+                events.removeLast(events.count - 80)
+            }
         }
         if var archive = currentSessionArchive {
             archive.sentCount = sentCount
@@ -237,6 +241,13 @@ final class LocationRecorder: NSObject, ObservableObject {
             persistCurrentSession()
         }
         sendAppLog(kind: "road_context_event", event: event, message: nil)
+    }
+
+    private func warmupOnly(_ event: RecorderEvent) -> Bool {
+        guard currentSessionEvents.isEmpty, event.errorMessage == nil, let response = event.response else {
+            return false
+        }
+        return !response.matched
     }
 
     private func persistCurrentSession(refreshList: Bool = false) {

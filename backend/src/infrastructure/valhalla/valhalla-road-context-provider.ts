@@ -2,7 +2,7 @@ import type { RoadContextProvider } from "../../application/ports/road-context-p
 import type { GpsSample, MatchedRoad, RoadMatch } from "../../domain/models/road-context.js";
 import { calculateRoadConfidence } from "../../domain/services/confidence.js";
 import { normalizeCourse } from "../../domain/services/geo.js";
-import { parseMaxspeedToKmh } from "../../domain/services/maxspeed.js";
+import { parseMaxspeed } from "../../domain/services/maxspeed.js";
 import type { ValhallaTracePoint } from "./valhalla-client.js";
 
 export interface ValhallaGateway {
@@ -43,11 +43,13 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
       if (!matched || !edge) return unmatched(input.sample, 0.15);
 
       const distance = Number(matched.distance_from_trace_point ?? input.sample.horizontalAccuracyMeters);
+      const speedLimit = parseMaxspeed(edge.speed_limit);
       const base: Omit<MatchedRoad, "confidence"> = {
         matched: true,
         roadId: edge.way_id === undefined || edge.way_id === null ? null : `way-${edge.way_id}`,
         roadName: displayRoadName(edge),
-        speedLimitKmh: parseMaxspeedToKmh(edge.speed_limit),
+        speedLimitKmh: speedLimit.value,
+        speedLimitSource: speedLimit.source,
         roadType: edge.road_class ?? null,
         direction: edge.forward === false ? "backward" : edge.forward === true ? "forward" : "unknown",
         dataTimestamp: input.sample.timestamp,
@@ -134,6 +136,7 @@ function unmatched(sample: GpsSample, quality: number): RoadMatch {
     roadId: null,
     roadName: null,
     speedLimitKmh: null,
+    speedLimitSource: "unknown",
     roadType: null,
     confidence: quality,
     direction: "unknown",

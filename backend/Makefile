@@ -13,9 +13,6 @@ drive-test:
 drive-test-real:
 	npm run test:drive:real
 
-drive-test-real-chunks:
-	npm run test:drive:real:chunks
-
 lint:
 	npm run lint
 
@@ -43,20 +40,14 @@ purge-non-osm-alerts:
 valhalla-build:
 	npm run valhalla:build
 
-valhalla-prefetch:
-	npm run valhalla:prefetch
-
 valhalla-package:
 	npm run valhalla:package
 
+osm-refresh:
+	npm run osm:refresh
+
 raspberry-smoke:
 	npm run raspberry:smoke
-
-osm-bbox:
-	npm run osm:bbox
-
-osm-bbox-direct:
-	npm run osm:bbox:direct
 
 health:
 	npm run health

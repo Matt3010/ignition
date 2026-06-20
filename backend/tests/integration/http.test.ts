@@ -26,7 +26,13 @@ describe("HTTP API", () => {
     const body = response.json();
     expect(body.matched).toBe(true);
     expect(body.speedLimitKmh).toBe(70);
-    expect(body.alerts.some((alert: { type: string }) => alert.type === "fixedSpeedCamera")).toBe(true);
+    expect(body.speedLimitSource).toBe("explicit");
+    expect(
+      body.alerts.some(
+        (alert: { type: string; speedLimitSource: string }) =>
+          alert.type === "fixedSpeedCamera" && alert.speedLimitSource === "explicit",
+      ),
+    ).toBe(true);
     await app.close();
   });
 
@@ -59,10 +65,8 @@ describe("HTTP API", () => {
     const app = await buildApp(testConfig());
     const openapi = await app.inject({ method: "GET", url: "/documentation/json" });
     const config = await app.inject({ method: "GET", url: "/api/v1/config" });
-    const prefetch = await app.inject({ method: "GET", url: "/api/v1/tile-prefetch/status" });
     expect(openapi.statusCode).toBe(200);
     expect(config.json().supportedAlertTypes).toContain("roadWorks");
-    expect(prefetch.json().enabled).toBe(false);
     await app.close();
   });
 

@@ -7,7 +7,6 @@ const results = {
   health: await getJson("/health"),
   ready: await getJson("/ready"),
   config: await getJson("/api/v1/config"),
-  tilePrefetch: await getJson("/api/v1/tile-prefetch/status"),
   roadContext: await postJson("/api/v1/road-context", {
     latitude,
     longitude,

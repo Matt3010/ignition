@@ -13,7 +13,6 @@ import { SessionTraceStore } from "./domain/services/session-trace.js";
 import { InMemoryAlertRepository } from "./infrastructure/alerts/in-memory-alert-repository.js";
 import { createPool } from "./infrastructure/database/postgres.js";
 import { PostgisAlertRepository } from "./infrastructure/repositories/postgis-alert-repository.js";
-import { LocalScriptTilePrefetcher, NoopTilePrefetcher } from "./infrastructure/osm/tile-prefetcher.js";
 import { ValhallaClient } from "./infrastructure/valhalla/valhalla-client.js";
 import { ValhallaRoadContextProvider } from "./infrastructure/valhalla/valhalla-road-context-provider.js";
 import { createMockAlerts } from "./mock/mock-data.js";
@@ -77,7 +76,6 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
     dependencies.alertRepository,
     new SessionTraceStore(config.SESSION_TRACE_TTL_SECONDS * 1000),
     config,
-    dependencies.tilePrefetcher,
   );
   await registerAppLogRoutes(app);
   await registerRoadContextRoutes(app, useCase);
@@ -85,7 +83,6 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
     provider: dependencies.provider,
     alertRepository: dependencies.alertRepository,
     databaseEnabled: dependencies.databaseEnabled,
-    tilePrefetcher: dependencies.tilePrefetcher,
   });
 
   app.addHook("onClose", async () => {
@@ -99,7 +96,6 @@ function createDependencies(config: AppConfig): {
   provider: MockRoadContextProvider | ValhallaRoadContextProvider;
   alertRepository: AlertRepository;
   databaseEnabled: boolean;
-  tilePrefetcher: NoopTilePrefetcher | LocalScriptTilePrefetcher;
   pool?: pg.Pool;
 } {
   if (config.ROAD_CONTEXT_PROVIDER === "mock") {
@@ -107,17 +103,14 @@ function createDependencies(config: AppConfig): {
       provider: new MockRoadContextProvider(config.NODE_ENV === "production"),
       alertRepository: new InMemoryAlertRepository(createMockAlerts()),
       databaseEnabled: false,
-      tilePrefetcher: new NoopTilePrefetcher(),
     };
   }
 
   const pool = createPool(config);
-  const tilePrefetcher = new LocalScriptTilePrefetcher(config);
   return {
     provider: new ValhallaRoadContextProvider(new ValhallaClient(config)),
     alertRepository: new PostgisAlertRepository(pool),
     databaseEnabled: true,
-    tilePrefetcher,
     pool,
   };
 }

@@ -40,6 +40,7 @@ struct RoadContextResponse: Codable {
     let roadId: String?
     let roadName: String?
     let speedLimitKmh: Int?
+    let speedLimitSource: String?
     let roadType: String?
     let confidence: Double
     let direction: String
@@ -57,6 +58,7 @@ struct RoadAlert: Codable {
     let type: String
     let distanceMeters: Double
     let speedLimitKmh: Int?
+    let speedLimitSource: String?
     let latitude: Double
     let longitude: Double
     let direction: String
@@ -162,10 +164,15 @@ enum DriveEventFormatter {
         let roadLabel = response.matched
             ? roadName(response)
             : "strada non agganciata"
-        let limitLabel = response.speedLimitKmh.map { "limite \($0) km/h" } ?? "limite sconosciuto"
+        let limitLabel = response.speedLimitKmh.map {
+            "limite \($0) km/h (\(speedLimitSourceText(response.speedLimitSource)))"
+        } ?? "limite sconosciuto"
         let speedStatus = speedStatus(sample: sample, response: response)
-        let nearestAlert = response.alerts.first.map {
-            "alert \($0.type) a \(Int($0.distanceMeters.rounded())) m"
+        let nearestAlert = response.alerts.first.map { alert in
+            let limit = alert.speedLimitKmh.map {
+                ", limite \($0) km/h (\(speedLimitSourceText(alert.speedLimitSource)))"
+            } ?? ""
+            return "alert \(alert.type) a \(Int(alert.distanceMeters.rounded())) m\(limit)"
         } ?? "nessun alert vicino"
 
         return "\(speed), \(roadLabel), \(limitLabel), \(speedStatus), \(nearestAlert)"
@@ -185,6 +192,17 @@ enum DriveEventFormatter {
             return "LIMITE SUPERATO di \(Int((sample.speedKmh - Double(limit)).rounded())) km/h"
         }
         return "velocita ok"
+    }
+
+    static func speedLimitSourceText(_ source: String?) -> String {
+        switch source {
+        case "explicit":
+            return "esplicito"
+        case "implicit":
+            return "implicito"
+        default:
+            return "origine sconosciuta"
+        }
     }
 }
 

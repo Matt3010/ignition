@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Direction, RoadAlert } from "../../domain/models/alert.js";
 import { initialBearing, normalizeCourse } from "../../domain/services/geo.js";
-import { parseMaxspeedToKmh } from "../../domain/services/maxspeed.js";
+import { parseMaxspeed } from "../../domain/services/maxspeed.js";
 
 interface OsmNode {
   id: string;
@@ -178,12 +178,14 @@ function buildAlert(input: {
   confidence: number;
 }): RoadAlert {
   const now = new Date();
+  const maxspeed = parseMaxspeed(input.tags.maxspeed ?? input.tags["maxspeed:forward"] ?? input.tags["maxspeed:backward"]);
   return {
     id: deterministicUuid(`${input.source}:${input.osmType}:${input.osmId}:${input.type}`),
     type: input.type,
     latitude: input.latitude,
     longitude: input.longitude,
-    speedLimitKmh: parseMaxspeedToKmh(input.tags.maxspeed ?? input.tags["maxspeed:forward"] ?? input.tags["maxspeed:backward"]),
+    speedLimitKmh: maxspeed.value,
+    speedLimitSource: maxspeed.source,
     direction: input.direction ?? parseDirection(input.tags.direction),
     bearing: input.bearing ?? parseBearing(input.tags),
     roadId: input.roadId,

@@ -11,6 +11,7 @@ export const alertTypes = [
 
 export type AlertType = (typeof alertTypes)[number];
 export type Direction = "forward" | "backward" | "unknown";
+export type SpeedLimitSource = "explicit" | "implicit" | "unknown";
 
 export interface RoadAlert {
   id: string;
@@ -18,6 +19,7 @@ export interface RoadAlert {
   latitude: number;
   longitude: number;
   speedLimitKmh: number | null;
+  speedLimitSource: SpeedLimitSource;
   direction: Direction | null;
   bearing: number | null;
   roadId: string | null;

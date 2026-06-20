@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { alertTypes } from "../../domain/models/alert.js";
 import type { AlertRepository } from "../../application/ports/alert-repository.js";
 import type { RoadContextProvider } from "../../application/ports/road-context-provider.js";
-import type { TilePrefetcher } from "../../application/ports/tile-prefetcher.js";
 
 export async function registerSystemRoutes(
   app: FastifyInstance,
@@ -10,7 +9,6 @@ export async function registerSystemRoutes(
     provider: RoadContextProvider;
     alertRepository: AlertRepository;
     databaseEnabled: boolean;
-    tilePrefetcher: TilePrefetcher;
   },
 ): Promise<void> {
   app.get("/health", async () => {
@@ -45,8 +43,5 @@ export async function registerSystemRoutes(
     minSuggestedIntervalMs: app.config.MIN_CLIENT_INTERVAL_MS,
     maxRecommendedAccuracyMeters: app.config.MAX_GPS_ACCURACY_METERS,
     supportedAlertTypes: alertTypes,
-    tilePrefetchEnabled: dependencies.tilePrefetcher.status().enabled,
   }));
-
-  app.get("/api/v1/tile-prefetch/status", async () => dependencies.tilePrefetcher.status());
 }

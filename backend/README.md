@@ -46,7 +46,6 @@ Endpoint principali:
 - `GET /health`
 - `GET /ready`
 - `GET /api/v1/config`
-- `GET /api/v1/tile-prefetch/status`
 - `GET /documentation`
 
 ## Modalità Reale
@@ -103,18 +102,18 @@ La ricerca alert usa `ST_DWithin` e `ST_DistanceSphere`, filtra record inattivi/
 
 ## Importazione Dati
 
-`make seed` non inserisce fixture: importa alert statici dal file OSM locale `${OSM_DATA_DIR}/${OSM_REGION}.osm`. Eseguilo solo dopo avere scaricato una bbox o un estratto OSM locale. Nel normale flusso operativo il prefetch scarica la bbox e importa gli alert automaticamente.
+`make seed` non inserisce fixture: importa alert statici dal file OSM locale `${OSM_DATA_DIR}/${OSM_REGION}.alerts.osm` generato da `npm run osm:download`. In fallback legge `${OSM_DATA_DIR}/${OSM_REGION}.osm`.
 
 Formati supportati:
 
 - CSV
 - GeoJSON
-- OSM XML `.osm` reale scaricato da bbox/estratto
+- OSM XML `.osm` reale filtrato da estratto OSM
 
 Import OSM reale:
 
 ```bash
-OSM_REGION=prefetch-45p000000-11p000000 \
+OSM_REGION=italy \
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
 npm run import:osm-alerts
 ```
@@ -123,7 +122,7 @@ Oppure file esplicito:
 
 ```bash
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
-npm run import:osm-alerts -- --file data/osm/prefetch-45p000000-11p000000.osm
+npm run import:osm-alerts -- --file data/osm/italy.alerts.osm
 ```
 
 Il parser OSM importa solo dati statici realmente presenti:
@@ -132,9 +131,9 @@ Il parser OSM importa solo dati statici realmente presenti:
 - `highway=construction` o `construction=*` -> `roadWorks`
 - `hazard=*` -> `roadHazard`
 
-Converte `maxspeed`, anche `mph`, fa upsert e registra l'import in `data_imports` con `bbox`, `file_path` e `deactivated_count`. Non inventa alert: se OSM non contiene autovelox/lavori/pericoli nella bbox, l'import produce 0 record.
+Converte `maxspeed`, anche `mph`, fa upsert e registra l'import in `data_imports` con `bbox`, `file_path` e `deactivated_count`. Non inventa alert: se OSM non contiene autovelox/lavori/pericoli nell'estratto, l'import produce 0 record.
 
-Per default l'import OSM fa invalidation per bbox: gli alert `source=osm` attivi dentro la stessa bbox ma assenti nel nuovo estratto vengono marcati `active=false`. Questo evita dati vecchi quando OSM cambia. Per disattivare temporaneamente:
+Per default l'import OSM fa invalidation sull'area coperta dai record importati: gli alert `source=osm` attivi nella stessa area ma assenti nel nuovo estratto vengono marcati `active=false`. Questo evita dati vecchi quando OSM cambia. Per disattivare temporaneamente:
 
 ```bash
 OSM_ALERT_DEACTIVATE_STALE=false npm run import:osm-alerts
@@ -149,133 +148,74 @@ npm run alerts:purge-non-osm
 
 ## OpenStreetMap e Valhalla
 
-Il flusso principale è on-demand: il backend scarica bbox piccole attorno alla posizione GPS e costruisce tile locali per quel chunk. Non c'è una regione italiana hardcoded come requisito operativo.
-
-Download manuale di una bbox piccola:
+Il flusso principale usa un estratto OSM stabile, non bbox scaricate durante la guida. Di default scarica Italia completa da Geofabrik:
 
 ```bash
-OSM_REGION=bbox-test \
-OSM_BBOX=10.995,44.995,11.010,45.010 \
-npm run osm:bbox:direct
+npm run osm:download
 ```
 
-`OSM_BBOX` usa il formato `minLon,minLat,maxLon,maxLat`. Questo usa l'endpoint pubblico OpenStreetMap `/api/0.6/map`, adatto solo a bbox piccole. È lo stesso modello usato dal prefetch runtime.
+Preset supportati: `italy`, `france`, `germany`, `spain`, `switzerland`, `austria`, `slovenia`, `croatia`.
+
+Per un altro stato o una macro-regione Geofabrik:
+
+```bash
+OSM_EXTRACT_PRESET=france OSM_REGION=france npm run osm:download
+```
+
+Oppure URL esplicito:
+
+```bash
+OSM_REGION=custom \
+OSM_EXTRACT_URL=https://download.geofabrik.de/europe/monaco-latest.osm.pbf \
+npm run osm:download
+```
+
+Il download produce:
+
+- `${OSM_DATA_DIR}/${OSM_REGION}.osm.pbf` per Valhalla
+- `${OSM_DATA_DIR}/${OSM_REGION}.alerts.osm` filtrato per import alert statici
 
 Costruire tile Valhalla:
 
 ```bash
 OSM_DATA_DIR=./data/osm \
 VALHALLA_TILE_DIR=./data/valhalla \
-OSM_REGION=bbox-test \
+OSM_REGION=italy \
 npm run valhalla:build
 ```
 
-## Prefetch Tile Operativo
-
-In modalità reale il backend usa il prefetch tile on-demand. Quando riceve un campione GPS calcola il chunk corrente, lo mette in coda se non è già stato richiesto di recente, chiama Valhalla con le tile attive e poi accoda in background i chunk successivi davanti alla moto.
-
-Il prefetch operativo usa lo stesso flusso reale dei test a chunk:
-
-```txt
-GPS ricevuto
-  -> calcolo bbox corrente
-  -> accodamento prefetch se il chunk non è già recente/in coda
-  -> risposta API con tile attive
-  -> download OSM bbox in background se manca
-  -> conversione PBF se manca
-  -> import alert statici OSM in PostGIS
-  -> build tile Valhalla se manca
-  -> riavvio opzionale Valhalla sul chunk corrente
-  -> eventi successivi usano il chunk pronto
-  -> prefetch asincrono dei chunk di lookahead
-```
-
-Per sviluppo host, con PostgreSQL e Valhalla in Docker:
+Flusso completo consigliato:
 
 ```bash
-TILE_PREFETCH_RESTART_VALHALLA=true \
-ROAD_CONTEXT_PROVIDER=valhalla \
-DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
-VALHALLA_BASE_URL=http://127.0.0.1:8002 \
-npm run dev
+npm run osm:download
+npm run valhalla:build
+docker compose up -d postgres valhalla
+DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context npm run migrate
+DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context npm run import:osm-alerts
+docker compose up -d backend
 ```
 
-Stato del worker:
+Aggiornamento automatico ogni 24 ore:
 
 ```bash
-curl http://127.0.0.1:3000/api/v1/tile-prefetch/status
+docker compose --profile maintenance up -d osm-refresh
 ```
 
-Prefetch manuale di una bbox:
+Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`: dorme `OSM_REFRESH_INTERVAL_SECONDS` secondi, default `86400`, poi scarica il nuovo estratto, ricostruisce le tile in staging, importa gli alert e riavvia Valhalla. Per eseguire un refresh anche all'avvio:
 
 ```bash
-OSM_REGION=prefetch-smoke \
-OSM_BBOX=10.995,44.995,11.005,45.005 \
-VALHALLA_TILE_DIR=./data/valhalla-prefetch/prefetch-smoke \
-TILE_PREFETCH_RESTART_VALHALLA=false \
-npm run valhalla:prefetch
+OSM_REFRESH_RUN_ON_START=true docker compose --profile maintenance up -d osm-refresh
 ```
 
-Dry run senza rete/Docker:
+Refresh manuale:
 
 ```bash
-OSM_REGION=smoke \
-OSM_BBOX=10.990000,44.990000,11.010000,45.010000 \
-TILE_PREFETCH_DRY_RUN=true \
-npm run valhalla:prefetch
-```
-
-Variabili principali:
-
-- `TILE_PREFETCH_HALF_LAT` / `TILE_PREFETCH_HALF_LON`: dimensione della bbox attorno al centro chunk.
-- `TILE_PREFETCH_GRID_DEGREES`: snap della posizione per evitare rebuild ogni pochi metri.
-- `TILE_PREFETCH_LOOKAHEAD_CHUNKS`: quanti chunk futuri pianificare in base al course.
-- `TILE_PREFETCH_LOOKAHEAD_METERS`: distanza tra chunk futuri.
-- `TILE_PREFETCH_MIN_INTERVAL_SECONDS`: anti-rebuild sullo stesso chunk.
-- `TILE_PREFETCH_MAX_QUEUE`: limite della coda locale.
-- `TILE_PREFETCH_CLEANUP_INTERVAL_SECONDS`: ogni quanto provare la cleanup. Default `3600`.
-- `TILE_PREFETCH_RETENTION_HOURS`: cancella chunk prefetch più vecchi. Default `24`.
-- `TILE_PREFETCH_MAX_STORED_CHUNKS`: numero massimo di chunk prefetch conservati. Default `200`.
-- `TILE_PREFETCH_RESTART_VALHALLA`: se `true`, riavvia Valhalla sul tile appena costruito.
-- `VALHALLA_ACTIVE_TILE_DIR`: directory attiva montata da Valhalla, usata quando il backend gira in Docker. Il chunk pronto viene copiato qui prima del restart.
-- `VALHALLA_CONTAINER_NAME`: nome container Valhalla da riavviare con Docker CLI. In Compose vale `road-context-valhalla`.
-- `TILE_PREFETCH_MAX_AGE_HOURS`: TTL dei tile prefetch. Default 24 ore.
-- `TILE_PREFETCH_IMPORT_ALERTS`: se `true`, importa alert statici OSM dopo download bbox. Default `true`.
-- `TILE_PREFETCH_RETRIES`: tentativi per download/import/build/restart. Default `2`.
-- `TILE_PREFETCH_RETRY_DELAY_SECONDS`: pausa tra retry. Default `3`.
-- `TILE_PREFETCH_LOCK_TIMEOUT_SECONDS`: attesa massima lock anti rebuild concorrenti. Default `300`.
-
-Nota operativa: se il backend gira dentro Docker in modalità reale, il container usa Docker CLI/socket per costruire tile e riavviare Valhalla. `docker-compose.yml` monta `./data:/app/data`, monta `/var/run/docker.sock`, usa `VALHALLA_ACTIVE_TILE_DIR=/app/data/valhalla` e riavvia `road-context-valhalla`. Il primo ingresso in un chunk mai costruito può impiegare diversi secondi perché prepara dati reali; i chunk successivi vengono preparati in anticipo dal lookahead.
-
-Lo script usa lock directory atomica per regione (`.prefetch-lock-*`) così due richieste non ricostruiscono lo stesso chunk insieme. Se un secondo processo arriva mentre il primo lavora, aspetta fino a `TILE_PREFETCH_LOCK_TIMEOUT_SECONDS`.
-
-Ogni tile prefetch contiene `prefetch-meta.json` con `bbox`, `downloadedAt`, `builtAt`, sorgente OSM e TTL. Lo script invalida e ricostruisce quando:
-
-- il tile manca;
-- il metadata manca o non è valido;
-- la bbox richiesta è diversa da quella salvata;
-- `builtAt/downloadedAt` supera `TILE_PREFETCH_MAX_AGE_HOURS`;
-- `TILE_PREFETCH_FORCE=true`.
-
-Quando ricostruisce, lo script reimporta anche gli alert OSM della bbox. Se il tile e fresco ma il file `.osm` locale esiste, l'import viene comunque rieseguito in modo idempotente, cosi un DB svuotato torna coerente senza inventare dati. Se `VALHALLA_ACTIVE_TILE_DIR` e impostato, il chunk pronto viene copiato nella directory attiva montata da Valhalla e poi il container viene riavviato.
-
-La cleanup automatica gira in modo asincrono e solo su `TILE_PREFETCH_TILE_ROOT`: cancella chunk scaduti, elimina i file OSM corrispondenti in `OSM_DATA_DIR`, rispetta `TILE_PREFETCH_MAX_STORED_CHUNKS`, protegge i chunk in coda/in esecuzione e non tocca mai `VALHALLA_TILE_DIR` / `VALHALLA_ACTIVE_TILE_DIR`.
-
-`GET /api/v1/tile-prefetch/status` espone anche ultimo `bbox`, `tileDir`, `downloadedAt`, `builtAt`, stato import OSM, record importati e record disattivati.
-
-Forzare aggiornamento:
-
-```bash
-OSM_REGION=prefetch-45p000000-11p000000 \
-OSM_BBOX=10.990000,44.990000,11.010000,45.010000 \
-VALHALLA_TILE_DIR=./data/valhalla-prefetch/prefetch-45p000000-11p000000 \
-TILE_PREFETCH_FORCE=true \
-npm run valhalla:prefetch
+DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context npm run osm:refresh
 ```
 
 ## Test Di Guida Continuo
 
-Test di guida reale: GPS simulato lungo una route Valhalla, provider reali, PostGIS e prefetch automatico. `npm run test:drive` è reale quanto `npm run test:drive:real`. Non invia scenari debug e fallisce se `/ready` non è pronto.
+Test di guida reale: GPS simulato lungo una route Valhalla, provider reali, PostGIS e tile già preparate. `npm run test:drive` è reale quanto `npm run test:drive:real`. Non invia scenari debug e fallisce se `/ready` non è pronto.
 
 ```bash
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
@@ -336,7 +276,6 @@ Per non partire sempre dalla stessa strada, lascia attivo il jitter di partenza 
 ```bash
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
 VALHALLA_BASE_URL=http://127.0.0.1:8002 \
-TILE_PREFETCH_RESTART_VALHALLA=true \
 DRIVE_SOAK_DELAY_MS=0 \
 DRIVE_SOAK_START_JITTER_METERS=1000 \
 DRIVE_SOAK_MAX_ITERATIONS=300 \
@@ -366,38 +305,6 @@ Coordinate configurabili:
 
 Queste coordinate devono cadere dentro le tile Valhalla preparate.
 
-Test reale a chunk dinamici: scarica una bbox piccola, costruisce tile Valhalla per quel chunk, riavvia Valhalla, guida dentro il chunk, poi passa alla bbox successiva. Se `DRIVE_CHUNK_MAX_CHUNKS` non è impostato continua finché viene interrotto.
-
-```bash
-DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
-VALHALLA_BASE_URL=http://127.0.0.1:8002 \
-DRIVE_CHUNK_START_LAT=45.000 \
-DRIVE_CHUNK_START_LON=11.000 \
-DRIVE_CHUNK_STEP_LAT=0.006 \
-DRIVE_CHUNK_HALF_LAT=0.010 \
-DRIVE_CHUNK_HALF_LON=0.010 \
-DRIVE_CHUNK_ITERATIONS=30 \
-DRIVE_CHUNK_PAUSE_SECONDS=10 \
-npm run test:drive:real:chunks
-```
-
-Per un infinito robusto su aree poco stradali lascia `DRIVE_CHUNK_MIN_MATCH_RATE` a `0`. Impostalo sopra zero solo quando vuoi fallire se una bbox non produce abbastanza match.
-
-Smoke test finito:
-
-```bash
-DRIVE_CHUNK_MAX_CHUNKS=2 \
-DRIVE_CHUNK_ITERATIONS=10 \
-DRIVE_CHUNK_DELAY_MS=0 \
-npm run test:drive:real:chunks
-```
-
-Dry run senza download/build:
-
-```bash
-DRIVE_CHUNK_DRY_RUN=true DRIVE_CHUNK_MAX_CHUNKS=3 npm run test:drive:real:chunks
-```
-
 Per Raspberry Pi è consigliato costruire le tile su una macchina più potente e trasferire `VALHALLA_TILE_DIR` sul Raspberry, evitando build pesanti direttamente sul dispositivo.
 
 Aggiornamenti periodici: configurare `OSM_UPDATE_CRON`, scaricare nuovo estratto, ricostruire tile offline, poi sostituire il volume Valhalla durante una finestra controllata.
@@ -422,9 +329,10 @@ Il backend usa il dato OSM/Valhalla quando disponibile:
 - numerico;
 - `km/h` o `kph`;
 - `mph`, convertito in km/h;
+- impliciti italiani `IT:urban`, `IT:rural`, `IT:trunk`, `IT:motorway`;
 - limiti condizionali semplici quando il valore è interpretabile.
 
-Se il limite è assente, variabile o non affidabile, `speedLimitKmh` è `null`. Non vengono inventati limiti impliciti.
+Se il limite è assente, variabile o non affidabile, `speedLimitKmh` è `null`. I limiti impliciti vengono normalizzati solo quando arrivano come tag OSM/Valhalla esplicito.
 
 ## Sicurezza e Privacy
 
@@ -451,7 +359,7 @@ I test non richiedono servizi Internet. Coprono validazione, geodesia, maxspeed,
 
 ## Raspberry Pi
 
-Procedura consigliata: avviare Compose e lasciare che il backend costruisca chunk on-demand tramite prefetch runtime. Non serve preparare una regione prima del test.
+Procedura consigliata: preparare estratto OSM, tile Valhalla e import alert prima di avviare il backend. Su Raspberry conviene costruire le tile su una macchina più potente e poi trasferire `data/valhalla`.
 
 Avvio su Raspberry:
 
@@ -481,7 +389,6 @@ Note Raspberry:
 
 - Tenere `force_rebuild=false` su Valhalla.
 - Usare SSD/USB affidabile per `postgres-data` e tile Valhalla se la SD e lenta.
-- Per prefetch runtime dentro container serve accesso a Docker socket. Il Compose incluso lo monta gia.
 
 ## Variabili Principali
 
@@ -493,16 +400,19 @@ Vedere `.env.example`. Le più importanti:
 - `VALHALLA_TIMEOUT_MS`
 - `ALERT_SEARCH_RADIUS_METERS`
 - `ALERT_DIRECTION_TOLERANCE_DEGREES`
+- `ALERT_UNASSIGNED_RADIUS_METERS`
+- `ALERT_UNMATCHED_RADIUS_METERS`
 - `SESSION_TRACE_TTL_SECONDS`
 - `CACHE_TTL_SECONDS`
 - `MAX_GPS_ACCURACY_METERS`
-- `TILE_PREFETCH_HALF_LAT`
-- `TILE_PREFETCH_HALF_LON`
-- `TILE_PREFETCH_LOOKAHEAD_CHUNKS`
-- `TILE_PREFETCH_LOOKAHEAD_METERS`
-- `TILE_PREFETCH_RESTART_VALHALLA`
-- `VALHALLA_ACTIVE_TILE_DIR`
-- `VALHALLA_CONTAINER_NAME`
+- `OSM_EXTRACT_PRESET`
+- `OSM_EXTRACT_URL`
+- `OSM_REGION`
+- `OSM_DATA_DIR`
+- `VALHALLA_TILE_DIR`
+- `OSM_REFRESH_INTERVAL_SECONDS`
+- `OSM_REFRESH_RUN_ON_START`
+- `OSM_REFRESH_RESTART_VALHALLA`
 
 ## Limiti Noti MVP
 
@@ -512,7 +422,7 @@ Vedere `.env.example`. Le più importanti:
 - L'MVP gestisce soprattutto autovelox fissi e dati statici (`fixedSpeedCamera`, `roadHazard`, `roadWorks`).
 - Il parsing dei limiti condizionali è conservativo.
 - La qualità del map matching dipende dalle tile Valhalla e dal dato OSM disponibile.
-- Il primo ingresso in una zona nuova può produrre eventi non agganciati finché il chunk on-demand non è pronto.
+- Fuori dall'area dell'estratto preparato il map matching non può funzionare.
 
 ## Troubleshooting
 

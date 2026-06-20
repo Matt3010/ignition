@@ -5,7 +5,7 @@ import { PostgisAlertRepository } from "../src/infrastructure/repositories/postg
 import { PostgresImportLogRepository } from "../src/infrastructure/repositories/postgres-import-log-repository.js";
 import { loadConfig } from "../src/config/env.js";
 import { alertTypes, type RoadAlert } from "../src/domain/models/alert.js";
-import { parseMaxspeedToKmh } from "../src/domain/services/maxspeed.js";
+import { parseMaxspeed } from "../src/domain/services/maxspeed.js";
 import { normalizeCourse } from "../src/domain/services/geo.js";
 
 interface CliOptions {
@@ -96,12 +96,14 @@ function normalizeRecord(row: Record<string, unknown>, source: string): RoadAler
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error("invalid coordinates");
   const bearing = normalizeCourse(row.bearing === undefined || row.bearing === "" ? null : Number(row.bearing));
   const now = new Date();
+  const maxspeed = parseMaxspeed((row.speedLimitKmh ?? row.maxspeed) as string | number | null);
   return {
     id: String(row.id ?? deterministicId(type, latitude, longitude, source)),
     type,
     latitude,
     longitude,
-    speedLimitKmh: parseMaxspeedToKmh((row.speedLimitKmh ?? row.maxspeed) as string | number | null),
+    speedLimitKmh: maxspeed.value,
+    speedLimitSource: maxspeed.source,
     direction: normalizeDirection(row.direction),
     bearing,
     roadId: row.roadId ? String(row.roadId) : row.road_id ? String(row.road_id) : null,

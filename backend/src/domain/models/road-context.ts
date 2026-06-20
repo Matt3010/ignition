@@ -1,4 +1,4 @@
-import type { AlertCandidate, Direction } from "./alert.js";
+import type { AlertCandidate, Direction, SpeedLimitSource } from "./alert.js";
 
 export interface GpsSample {
   latitude: number;
@@ -15,6 +15,7 @@ export interface MatchedRoad {
   roadId: string | null;
   roadName: string | null;
   speedLimitKmh: number | null;
+  speedLimitSource: SpeedLimitSource;
   roadType: string | null;
   confidence: number;
   direction: Direction;
@@ -29,6 +30,7 @@ export interface UnmatchedRoad {
   roadId: null;
   roadName: null;
   speedLimitKmh: null;
+  speedLimitSource: "unknown";
   roadType: null;
   confidence: number;
   direction: "unknown";
@@ -46,6 +48,7 @@ export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceM
     type: AlertCandidate["type"];
     distanceMeters: number;
     speedLimitKmh: number | null;
+    speedLimitSource: SpeedLimitSource;
     latitude: number;
     longitude: number;
     direction: Direction;

@@ -44,6 +44,7 @@ function alert(
     latitude,
     longitude,
     speedLimitKmh,
+    speedLimitSource: speedLimitKmh === null ? "unknown" : "explicit",
     direction,
     bearing,
     roadId,
