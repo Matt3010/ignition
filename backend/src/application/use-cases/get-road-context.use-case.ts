@@ -1,10 +1,10 @@
 import type { AppConfig } from "../../config/env.js";
 import type { RoadContextResponse, GpsSample } from "../../domain/models/road-context.js";
 import { filterRelevantAlerts } from "../../domain/services/alert-filter.js";
-import { roundMeters } from "../../domain/services/geo.js";
 import type { AlertRepository } from "../ports/alert-repository.js";
 import type { RoadContextProvider } from "../ports/road-context-provider.js";
 import type { SessionTraceStore } from "../../domain/services/session-trace.js";
+import { toAlertResponse, toPublicMatchStatus } from "./road-context-mappers.js";
 
 export class GetRoadContextUseCase {
   private readonly sessionQueues = new Map<string, Promise<void>>();
@@ -50,30 +50,7 @@ export class GetRoadContextUseCase {
         behindMinSpeedKmh: this.config.ALERT_BEHIND_MIN_SPEED_KMH,
         behindMaxGpsAccuracyMeters: this.config.ALERT_BEHIND_MAX_GPS_ACCURACY_METERS,
         behindMinDistanceIncreaseMeters: this.config.ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS,
-      }).map((alert) => ({
-        id: alert.id,
-        type: alert.type,
-        subtype: alert.subtype ?? null,
-        capabilities: alert.capabilities ?? [],
-        primaryCapability: alert.primaryCapability ?? null,
-        distanceMeters: roundMeters(alert.distanceMeters),
-        speedLimitKmh: alert.speedLimitKmh,
-        speedLimitSource: alert.speedLimitSource,
-        latitude: alert.latitude,
-        longitude: alert.longitude,
-        direction: alert.direction ?? "unknown",
-        confidence: alert.confidence,
-        operationalStatus: alert.operationalStatus ?? "unknown",
-        statusReason: alert.statusReason ?? alert.fixme ?? null,
-        directionBearings: alert.directionBearings ?? [],
-        osmPresenceStatus: alert.osmPresenceStatus ?? "present",
-        active: alert.active,
-        positionApproximate: alert.positionApproximate ?? false,
-        osmType: alert.osmType ?? null,
-        osmId: alert.osmId ?? null,
-        osmRelationId: alert.osmRelationId ?? null,
-        osmTimestamp: alert.osmTimestamp?.toISOString() ?? null,
-      }));
+      }).map(toAlertResponse);
 
       if (match.matched) {
         this.traceStore.setState(sample.sessionId, {
@@ -88,11 +65,7 @@ export class GetRoadContextUseCase {
 
       return {
         matched: match.matched,
-        matchStatus: match.matched
-          ? "matched"
-          : match.unmatchedReason === "providerError"
-            ? "providerUnavailable"
-            : "noMatch",
+        matchStatus: toPublicMatchStatus(match),
         roadId: match.roadId,
         roadName: match.roadName,
         speedLimitKmh: match.speedLimitKmh,

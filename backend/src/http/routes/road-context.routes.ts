@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { GetRoadContextUseCase } from "../../application/use-cases/get-road-context.use-case.js";
 import { RoadContextController } from "../controllers/road-context.controller.js";
-import { normalizedErrorSchema } from "../schemas/error.schema.js";
 import { roadContextRequestSchema, roadContextResponseSchema } from "../schemas/road-context.schema.js";
+import { errorResponses } from "../schemas/route-schema.js";
 
 export async function registerRoadContextRoutes(
   app: FastifyInstance,
@@ -17,11 +17,7 @@ export async function registerRoadContextRoutes(
         body: zodToJsonSchema(roadContextRequestSchema),
         response: {
           200: zodToJsonSchema(roadContextResponseSchema),
-          400: zodToJsonSchema(normalizedErrorSchema),
-          413: zodToJsonSchema(normalizedErrorSchema),
-          409: zodToJsonSchema(normalizedErrorSchema),
-          429: zodToJsonSchema(normalizedErrorSchema),
-          500: zodToJsonSchema(normalizedErrorSchema),
+          ...errorResponses(400, 413, 409, 429, 500),
         },
       },
     },

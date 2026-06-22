@@ -1,110 +1,79 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { ApplicationError } from "../../domain/errors/application-error.js";
 import { hashSessionId } from "../../domain/services/session-id.js";
 
+interface ErrorResponseOptions {
+  statusCode: number;
+  code: string;
+  publicMessage: string;
+  logMessage: string;
+  details?: unknown[];
+}
+
 export async function registerErrorHandler(app: FastifyInstance): Promise<void> {
   app.setErrorHandler((error, request, reply) => {
     const fastifyError = error as { code?: string; statusCode?: number; message?: string };
+
     if (typeof error === "object" && error !== null && "validation" in error) {
       const validation = (error as { validation?: unknown }).validation;
-      const details = Array.isArray(validation) ? validation : [];
-      logClientError(request, {
+      return sendClientError(request, reply, {
         statusCode: 400,
         code: "INVALID_REQUEST",
-        message: "Request validation failed",
-        details,
-      });
-      return reply.status(400).send({
-        error: {
-          code: "INVALID_REQUEST",
-          message: "Request non valida",
-          details,
-        },
+        publicMessage: "Request non valida",
+        logMessage: "Request validation failed",
+        details: Array.isArray(validation) ? validation : [],
       });
     }
 
     if (error instanceof ZodError) {
-      const details = error.issues.map((issue) => ({
-        path: issue.path.join("."),
-        message: issue.message,
-      }));
-      logClientError(request, {
+      return sendClientError(request, reply, {
         statusCode: 400,
         code: "INVALID_REQUEST",
-        message: "Zod validation failed",
-        details,
-      });
-      return reply.status(400).send({
-        error: {
-          code: "INVALID_REQUEST",
-          message: "Request non valida",
-          details,
-        },
+        publicMessage: "Request non valida",
+        logMessage: "Zod validation failed",
+        details: error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
       });
     }
 
     if (fastifyError.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
-      logClientError(request, {
+      return sendClientError(request, reply, {
         statusCode: 413,
         code: "INVALID_REQUEST",
-        message: "Payload too large",
-        details: [],
-      });
-      return reply.status(413).send({
-        error: {
-          code: "INVALID_REQUEST",
-          message: "Payload troppo grande",
-          details: [],
-        },
+        publicMessage: "Payload troppo grande",
+        logMessage: "Payload too large",
       });
     }
 
     if (fastifyError.statusCode === 429) {
-      logClientError(request, {
+      return sendClientError(request, reply, {
         statusCode: 429,
         code: "RATE_LIMITED",
-        message: "Rate limited",
-        details: [],
-      });
-      return reply.status(429).send({
-        error: {
-          code: "RATE_LIMITED",
-          message: "Troppe richieste",
-          details: [],
-        },
+        publicMessage: "Troppe richieste",
+        logMessage: "Rate limited",
       });
     }
 
     if (error instanceof ApplicationError) {
-      logClientError(request, {
+      return sendClientError(request, reply, {
         statusCode: error.statusCode,
         code: error.code,
-        message: error.message,
+        publicMessage: error.message,
+        logMessage: error.message,
         details: error.details,
-      });
-      return reply.status(error.statusCode).send({
-        error: {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-        },
       });
     }
 
     if (fastifyError.statusCode && fastifyError.statusCode >= 400 && fastifyError.statusCode < 500) {
-      logClientError(request, {
+      const message = fastifyError.message ?? "Client request error";
+      return sendClientError(request, reply, {
         statusCode: fastifyError.statusCode,
         code: "INVALID_REQUEST",
-        message: fastifyError.message ?? "Client request error",
-        details: [],
-      });
-      return reply.status(fastifyError.statusCode).send({
-        error: {
-          code: "INVALID_REQUEST",
-          message: fastifyError.message ?? "Request non valida",
-          details: [],
-        },
+        publicMessage: fastifyError.message ?? "Request non valida",
+        logMessage: message,
       });
     }
 
@@ -124,19 +93,28 @@ export async function registerErrorHandler(app: FastifyInstance): Promise<void> 
   });
 }
 
-function logClientError(
+function sendClientError(
   request: FastifyRequest,
-  event: { statusCode: number; code: string; message: string; details: unknown[] },
-): void {
+  reply: FastifyReply,
+  options: ErrorResponseOptions,
+): FastifyReply {
+  const details = options.details ?? [];
   const body = request.body as { sessionId?: string } | undefined;
   request.log.warn(
     {
-      statusCode: event.statusCode,
-      code: event.code,
-      details: event.details,
+      statusCode: options.statusCode,
+      code: options.code,
+      details,
       sessionHash: body?.sessionId ? hashSessionId(body.sessionId) : null,
     },
-    event.message,
+    options.logMessage,
   );
-}
 
+  return reply.status(options.statusCode).send({
+    error: {
+      code: options.code,
+      message: options.publicMessage,
+      details,
+    },
+  });
+}

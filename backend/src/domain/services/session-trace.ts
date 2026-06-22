@@ -36,7 +36,6 @@ export class SessionTraceStore {
         const age = now - Date.parse(item.timestamp);
         return age >= -this.maxFutureSkewMs && age <= this.ttlMs;
       })
-      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
       .slice(-this.maxSamples);
     this.traces.set(sample.sessionId, next);
     return next;

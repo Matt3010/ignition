@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { FileAppLogStore } from "../../infrastructure/app-logs/file-app-log-store.js";
 import { AppLogController } from "../controllers/app-log.controller.js";
-import { normalizedErrorSchema } from "../schemas/error.schema.js";
 import { appLogRequestSchema, appLogResponseSchema } from "../schemas/app-log.schema.js";
+import { errorResponses } from "../schemas/route-schema.js";
 
 export async function registerAppLogRoutes(app: FastifyInstance): Promise<void> {
   const controller = new AppLogController(
@@ -20,9 +20,7 @@ export async function registerAppLogRoutes(app: FastifyInstance): Promise<void> 
         body: zodToJsonSchema(appLogRequestSchema),
         response: {
           200: zodToJsonSchema(appLogResponseSchema),
-          400: zodToJsonSchema(normalizedErrorSchema),
-          413: zodToJsonSchema(normalizedErrorSchema),
-          500: zodToJsonSchema(normalizedErrorSchema),
+          ...errorResponses(400, 413, 500),
         },
       },
     },

@@ -16,7 +16,6 @@ const defaultOptions: FileAppLogStoreOptions = {
 };
 
 export class FileAppLogStore {
-  private cleanupPromise: Promise<void> | null = null;
   private appendQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -34,7 +33,7 @@ export class FileAppLogStore {
     await previous;
     try {
       await mkdir(this.directory, { recursive: true });
-      await this.cleanup();
+      await this.performCleanup();
 
       const baseFile = `${payload.sessionId}.jsonl`;
       const filePath = path.join(this.directory, baseFile);
@@ -46,7 +45,7 @@ export class FileAppLogStore {
       const line = `${JSON.stringify(record)}\n`;
       const file = await this.rotateIfNeeded(baseFile, filePath, Buffer.byteLength(line));
       await appendFile(path.join(this.directory, file), line, "utf8");
-      await this.cleanup(file);
+      await this.performCleanup(file);
       return file;
     } finally {
       release();
@@ -66,15 +65,6 @@ export class FileAppLogStore {
       if (isMissingFile(error)) return baseFile;
       throw error;
     }
-  }
-
-  private async cleanup(protectedFile?: string): Promise<void> {
-    if (!this.cleanupPromise) {
-      this.cleanupPromise = this.performCleanup(protectedFile).finally(() => {
-        this.cleanupPromise = null;
-      });
-    }
-    await this.cleanupPromise;
   }
 
   private async performCleanup(protectedFile?: string): Promise<void> {
@@ -110,6 +100,7 @@ export class FileAppLogStore {
     const excess = removable.slice(removableLimit);
     await Promise.all(excess.map((file) => this.unlinkIfPresent(file.filePath)));
   }
+
   private async unlinkIfPresent(filePath: string): Promise<void> {
     try {
       await unlink(filePath);
@@ -117,7 +108,6 @@ export class FileAppLogStore {
       if (!isMissingFile(error)) throw error;
     }
   }
-
 }
 
 function isMissingFile(error: unknown): boolean {
