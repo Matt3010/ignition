@@ -65,7 +65,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: ../.github/npm-ci.sh
+        run: bash ../.github/npm-ci.sh
 
       - name: Build
         run: npm run build
@@ -108,7 +108,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: ../.github/npm-ci.sh
+        run: bash ../.github/npm-ci.sh
 
       - name: Pull pinned Valhalla image
         run: docker pull "${VALHALLA_DOCKER_IMAGE}"
