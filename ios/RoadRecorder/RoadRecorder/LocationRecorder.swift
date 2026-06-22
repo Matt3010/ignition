@@ -97,39 +97,56 @@ final class LocationRecorder: NSObject, ObservableObject {
         case .authorizedAlways:
             beginLocationUpdates()
         case .denied, .restricted:
-            isRecording = false
-            statusText = "Permesso GPS negato"
+            finishCurrentSession(
+                status: "Permesso GPS negato",
+                logKind: "session_permission_denied",
+                message: "recording stopped because location permission was denied"
+            )
         @unknown default:
-            isRecording = false
-            statusText = "Permesso GPS sconosciuto"
+            finishCurrentSession(
+                status: "Permesso GPS sconosciuto",
+                logKind: "session_permission_unknown",
+                message: "recording stopped because location authorization status was unknown"
+            )
         }
     }
 
     func stopRecording() {
+        finishCurrentSession(
+            status: "Fermo",
+            logKind: "session_stop",
+            message: "recording stopped"
+        )
+    }
+
+    private func finishCurrentSession(status: String, logKind: String, message: String) {
         manager.stopUpdatingLocation()
         activeSendTask?.cancel()
         activeSendTask = nil
         activeRequestToken = nil
+
         let stoppedSessionId = sessionId
         let stoppedBackendURL = validatedBackendURL
+        let hadActiveSession = isRecording || currentSessionArchive?.endedAt == nil
+
         isRecording = false
         sessionGeneration = UUID()
-        statusText = "Fermo"
-        if var archive = currentSessionArchive {
-            archive.endedAt = isoFormatter.string(from: Date())
-            archive.sentCount = sentCount
-            archive.errorCount = errorCount
-            archive.events = currentSessionEvents
-            currentSessionArchive = archive
-            persistCurrentSession(refreshList: true)
-            sendAppLog(
-                kind: "session_stop",
-                event: nil,
-                message: "recording stopped",
-                sessionId: stoppedSessionId,
-                backendURL: stoppedBackendURL
-            )
-        }
+        statusText = status
+
+        guard hadActiveSession, var archive = currentSessionArchive, archive.endedAt == nil else { return }
+        archive.endedAt = isoFormatter.string(from: Date())
+        archive.sentCount = sentCount
+        archive.errorCount = errorCount
+        archive.events = currentSessionEvents
+        currentSessionArchive = archive
+        persistCurrentSession(refreshList: true)
+        sendAppLog(
+            kind: logKind,
+            event: nil,
+            message: message,
+            sessionId: stoppedSessionId,
+            backendURL: stoppedBackendURL
+        )
     }
 
     func clearEvents() {
@@ -341,6 +358,28 @@ final class LocationRecorder: NSObject, ObservableObject {
         return url
     }
 
+    private func recordLocationError(_ error: Error) {
+        guard isRecording, var archive = currentSessionArchive else {
+            statusText = error.localizedDescription
+            return
+        }
+
+        errorCount += 1
+        statusText = error.localizedDescription
+        archive.errorCount = errorCount
+        archive.sentCount = sentCount
+        archive.events = currentSessionEvents
+        currentSessionArchive = archive
+        persistCurrentSession()
+        sendAppLog(
+            kind: "location_error",
+            event: nil,
+            message: error.localizedDescription,
+            sessionId: archive.id,
+            backendURL: validatedBackendURL
+        )
+    }
+
     private func sendAppLog(
         kind: String,
         event: RecorderEvent?,
@@ -497,13 +536,19 @@ extension LocationRecorder: CLLocationManagerDelegate {
             case .authorizedAlways:
                 beginLocationUpdates()
             case .denied, .restricted:
-                isRecording = false
-                statusText = "Permesso GPS negato"
+                finishCurrentSession(
+                    status: "Permesso GPS negato",
+                    logKind: "session_permission_denied",
+                    message: "recording stopped because location permission was denied"
+                )
             case .notDetermined:
                 break
             @unknown default:
-                isRecording = false
-                statusText = "Permesso GPS sconosciuto"
+                finishCurrentSession(
+                    status: "Permesso GPS sconosciuto",
+                    logKind: "session_permission_unknown",
+                    message: "recording stopped because location authorization status was unknown"
+                )
             }
         }
     }
@@ -517,8 +562,7 @@ extension LocationRecorder: CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
-            statusText = error.localizedDescription
-            errorCount += 1
+            recordLocationError(error)
         }
     }
 }
