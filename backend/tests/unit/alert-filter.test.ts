@@ -164,4 +164,25 @@ it("keeps non-operational OSM cameras visible even below the confidence threshol
     });
     expect(alerts).toHaveLength(1);
     expect(alerts[0].operationalStatus).toBe("notOperational");
-});
+  });
+
+  it("does not truncate alerts by result limit", () => {
+    const alerts = Array.from({ length: 300 }, (_, index) => ({
+      ...base,
+      id: `alert-${index}`,
+      latitude: 45.001 + index * 0.000001,
+      distanceMeters: index + 1,
+    }));
+    const result = filterRelevantAlerts({
+      alerts,
+      roadId: null,
+      userCourse: null,
+      direction: "unknown",
+      directionToleranceDegrees: 45,
+      unassignedMaxDistanceMeters: 500,
+      unmatchedMaxDistanceMeters: 300,
+      now: new Date(),
+      limit: 10,
+    });
+    expect(result).toHaveLength(300);
+  });

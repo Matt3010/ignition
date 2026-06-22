@@ -39,6 +39,8 @@ export const roadContextResponseSchema = z.object({
       confidence: z.number().min(0).max(1),
       operationalStatus: z.enum(["operational", "notOperational", "unknown"]),
       statusReason: z.string().nullable(),
+      directionBearings: z.array(z.number().min(0).max(359)),
+      osmPresenceStatus: z.enum(["present", "missingFromLatestImport"]),
     }),
   ),
 });

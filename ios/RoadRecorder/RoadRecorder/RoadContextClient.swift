@@ -65,6 +65,8 @@ struct RoadAlert: Codable {
     let confidence: Double
     let operationalStatus: String?
     let statusReason: String?
+    let directionBearings: [Double]?
+    let osmPresenceStatus: String?
 }
 
 struct RecorderEvent: Identifiable, Codable {

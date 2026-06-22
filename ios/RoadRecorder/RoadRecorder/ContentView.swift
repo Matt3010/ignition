@@ -253,6 +253,14 @@ private struct EventAlertLine: View {
                 Text("motivo OSM: \(statusReason)")
                     .foregroundStyle(.secondary)
             }
+            if let bearings = alert.directionBearings, !bearings.isEmpty {
+                Text("direzioni OSM: \(bearings.map { String(Int($0.rounded())) + "°" }.joined(separator: ", "))")
+                    .foregroundStyle(.secondary)
+            }
+            if let presence = alert.osmPresenceStatus {
+                Text("presenza OSM: \(presence == "missingFromLatestImport" ? "mancante dall’ultimo import" : "presente")")
+                    .foregroundStyle(presence == "missingFromLatestImport" ? Color.orange : Color.secondary)
+            }
             Text(String(format: "posizione alert: %.5f, %.5f", alert.latitude, alert.longitude))
         }
         .padding(.leading, 2)

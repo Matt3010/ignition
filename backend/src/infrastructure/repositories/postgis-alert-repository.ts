@@ -36,6 +36,8 @@ export class PostgisAlertRepository implements AlertRepository {
         position_approximate,
         operational_status,
         status_reason,
+        direction_bearings,
+        osm_presence_status,
         original_osm_ids,
         ST_DistanceSphere(geometry, ST_SetSRID(ST_MakePoint($1, $2), 4326)) as distance_meters
       from road_alerts
@@ -45,7 +47,6 @@ export class PostgisAlertRepository implements AlertRepository {
           $3
         )
       order by distance_meters asc
-      limit 1000
       `,
       [input.longitude, input.latitude, input.radiusMeters, input.now],
     );
@@ -72,6 +73,8 @@ export class PostgisAlertRepository implements AlertRepository {
       positionApproximate: row.position_approximate,
       operationalStatus: row.operational_status,
       statusReason: row.status_reason,
+      directionBearings: row.direction_bearings ?? [],
+      osmPresenceStatus: row.osm_presence_status ?? "present",
       originalOsmIds: row.original_osm_ids ?? [],
       distanceMeters: Number(row.distance_meters),
     }));
@@ -87,11 +90,11 @@ export class PostgisAlertRepository implements AlertRepository {
           `
           insert into road_alerts (
             id, type, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source, direction, bearing,
-            road_id, confidence, active, valid_from, valid_until, source, osm_type, osm_id, osm_relation_id, source_tags, fixme, position_approximate, operational_status, status_reason, original_osm_ids, created_at, updated_at
+            road_id, confidence, active, valid_from, valid_until, source, osm_type, osm_id, osm_relation_id, source_tags, fixme, position_approximate, operational_status, status_reason, direction_bearings, osm_presence_status, original_osm_ids, created_at, updated_at
           )
           values (
             $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326), $5, $6, $7, $8,
-            $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23::text[], now(), now()
+            $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23::double precision[], $24, $25::text[], now(), now()
           )
           on conflict (id) do update set
             type = excluded.type,
@@ -116,6 +119,8 @@ export class PostgisAlertRepository implements AlertRepository {
             position_approximate = excluded.position_approximate,
             operational_status = excluded.operational_status,
             status_reason = excluded.status_reason,
+            direction_bearings = excluded.direction_bearings,
+            osm_presence_status = excluded.osm_presence_status,
             original_osm_ids = excluded.original_osm_ids,
             updated_at = now()
           `,
@@ -142,6 +147,8 @@ export class PostgisAlertRepository implements AlertRepository {
             alert.positionApproximate ?? false,
             alert.operationalStatus ?? "unknown",
             alert.statusReason ?? alert.fixme ?? null,
+            alert.directionBearings ?? [],
+            alert.osmPresenceStatus ?? "present",
             alert.originalOsmIds ?? [],
           ],
         );
@@ -169,7 +176,7 @@ export class PostgisAlertRepository implements AlertRepository {
     const result = await this.pool.query(
       `
       update road_alerts
-      set active = false, updated_at = now()
+      set active = false, osm_presence_status = 'missingFromLatestImport', updated_at = now()
       where source = $1
         and active = true
         and id <> all($2::uuid[])

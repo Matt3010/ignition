@@ -36,6 +36,5 @@ export function filterRelevantAlerts(input: AlertFilterInput): AlertCandidate[] 
       const difference = angularDifference(input.userCourse, bearingToAlert);
       return difference === null || difference <= (input.aheadToleranceDegrees ?? 90);
     })
-    .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, input.limit);
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }

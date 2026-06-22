@@ -102,7 +102,7 @@ function alertFromRelation(
   ways: Map<string, OsmWay>,
   source: string,
 ): RoadAlert | null {
-  if (relation.tags.enforcement !== "maxspeed") return null;
+  if (!["maxspeed", "traffic_signals"].includes(relation.tags.enforcement ?? "")) return null;
   const deviceNode =
     relationNode(relation, nodes, "device") ?? relationNode(relation, nodes, "via");
   const fromNode =
@@ -117,7 +117,7 @@ function alertFromRelation(
   return buildAlert({
     osmType: "relation",
     osmId: relation.id,
-    type: "fixedSpeedCamera",
+    type: relation.tags.enforcement === "traffic_signals" ? "redLightCamera" : "fixedSpeedCamera",
     latitude: node.latitude,
     longitude: node.longitude,
     tags: relation.tags,
@@ -125,6 +125,7 @@ function alertFromRelation(
     roadId: relationRoadId(relation),
     direction: bearing === null ? "unknown" : "forward",
     bearing,
+    directionBearings: bearing === null ? [] : [bearing],
     confidence: calculateOsmConfidence(relation.tags, {
       hasRoad: relationRoadId(relation) !== null,
       hasBearing: bearing !== null,
@@ -150,7 +151,7 @@ function alertFromElement(
     return buildAlert({
       osmType,
       osmId,
-      type: "fixedSpeedCamera",
+      type: tags.enforcement === "traffic_signals" ? "redLightCamera" : "fixedSpeedCamera",
       latitude,
       longitude,
       tags,
@@ -219,6 +220,7 @@ function buildAlert(input: {
   roadId: string | null;
   direction?: Direction;
   bearing?: number | null;
+  directionBearings?: number[];
   confidence: number;
   osmRelationId?: string | null;
   attributes?: Record<string, string>;
@@ -236,6 +238,7 @@ function buildAlert(input: {
     speedLimitSource: maxspeed.source,
     direction: input.direction ?? parseDirection(input.tags.direction),
     bearing: input.bearing ?? parseBearing(input.tags),
+    directionBearings: input.directionBearings ?? parseBearings(input.tags),
     roadId: input.roadId,
     confidence: input.confidence,
     active: true,
@@ -248,8 +251,9 @@ function buildAlert(input: {
     sourceTags: input.tags,
     fixme: input.tags.fixme ?? null,
     positionApproximate: isApproximateFixme(input.tags.fixme),
-    operationalStatus: isNegativeFixme(input.tags.fixme) ? "notOperational" : "unknown",
-    statusReason: input.tags.fixme ?? null,
+    operationalStatus: operationalStatusFromTags(input.tags),
+    statusReason: operationalStatusReason(input.tags),
+    osmPresenceStatus: "present",
     originalOsmIds: [`${input.osmType}/${input.osmId}`],
     createdAt: parseOsmDate(input.attributes?.timestamp) ?? now,
     updatedAt: now,
@@ -473,12 +477,26 @@ function isRoadHazard(tags: Record<string, string>): boolean {
 }
 
 function parseDirection(value: string | undefined): Direction {
-  if (value === "forward" || value === "backward") return value;
+  if (!value) return "unknown";
+  const values = value.toLowerCase().split(";").map((item) => item.trim());
+  if (values.length === 1 && (values[0] === "forward" || values[0] === "backward")) {
+    return values[0];
+  }
   return "unknown";
 }
 
 function parseBearing(tags: Record<string, string>): number | null {
-  return normalizeCourse(Number(tags.bearing ?? tags["camera:direction"] ?? tags.direction));
+  return parseBearings(tags)[0] ?? null;
+}
+
+function parseBearings(tags: Record<string, string>): number[] {
+  const raw = tags.bearing ?? tags["camera:direction"] ?? tags.direction;
+  if (!raw) return [];
+  const bearings = raw
+    .split(";")
+    .map((item) => normalizeCourse(Number(item.trim())))
+    .filter((item): item is number => item !== null);
+  return [...new Set(bearings)];
 }
 
 function deterministicUuid(value: string): string {
@@ -549,6 +567,32 @@ function isApproximateFixme(value: string | undefined): boolean {
   return ["approx position", "approximate", "position uncertain", "uncertain position"].some(
     (term) => normalized.includes(term),
   );
+}
+
+function operationalStatusFromTags(tags: Record<string, string>): "operational" | "notOperational" | "unknown" {
+  const negativeValues = new Set(["no", "false", "0", "disabled", "inactive", "not_working"]);
+  const positiveValues = new Set(["yes", "true", "1", "active", "working"]);
+  const working = tags.working?.trim().toLowerCase();
+  const disabled = tags.disabled?.trim().toLowerCase();
+  const operational = tags.operational?.trim().toLowerCase();
+  const status = tags.status?.trim().toLowerCase();
+
+  if (isNegativeFixme(tags.fixme)) return "notOperational";
+  if (working && negativeValues.has(working)) return "notOperational";
+  if (disabled && positiveValues.has(disabled)) return "notOperational";
+  if (operational && negativeValues.has(operational)) return "notOperational";
+  if (status && ["removed", "inactive", "disabled", "not_operational", "not operational"].includes(status)) return "notOperational";
+  if (working && positiveValues.has(working)) return "operational";
+  if (operational && positiveValues.has(operational)) return "operational";
+  return "unknown";
+}
+
+function operationalStatusReason(tags: Record<string, string>): string | null {
+  if (tags.fixme) return tags.fixme;
+  for (const key of ["working", "disabled", "operational", "status"] as const) {
+    if (tags[key] !== undefined) return `${key}=${tags[key]}`;
+  }
+  return null;
 }
 
 function parseOsmDate(value: string | undefined): Date | null {

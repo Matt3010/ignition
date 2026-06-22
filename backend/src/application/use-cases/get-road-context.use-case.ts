@@ -78,6 +78,8 @@ export class GetRoadContextUseCase {
       confidence: alert.confidence,
       operationalStatus: alert.operationalStatus ?? "unknown",
       statusReason: alert.statusReason ?? alert.fixme ?? null,
+      directionBearings: alert.directionBearings ?? [],
+      osmPresenceStatus: alert.osmPresenceStatus ?? "present",
     }));
 
     const response: RoadContextResponse = {
