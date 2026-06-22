@@ -1,4 +1,17 @@
 services:
+  valhalla-init:
+    build:
+      context: .
+    restart: "no"
+    command: ["bash", "/app/scripts/init-valhalla-config.sh"]
+    environment:
+      VALHALLA_CONFIG_TEMPLATE: /app/docker/valhalla/valhalla.json
+      VALHALLA_CONFIG_PATH: /app/data/valhalla/valhalla.json
+    volumes:
+      - ./data:/app/data
+    networks:
+      - road-context
+
   backend:
     build:
       context: .
@@ -138,6 +151,9 @@ services:
       - "127.0.0.1:8002:8002"
     networks:
       - road-context
+    depends_on:
+      valhalla-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8002/status >/dev/null || exit 1"]
       interval: 30s

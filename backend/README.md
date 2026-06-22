@@ -410,3 +410,9 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
 
 Per un deploy pubblico, imposta la visibilità del package su `Public` nelle impostazioni del package GitHub.
 
+
+## Bootstrap automatico Valhalla
+
+I file Compose inclusi nel progetto eseguono il servizio one-shot `valhalla-init` prima di Valhalla. Il servizio usa la configurazione versionata nell'immagine (`/app/docker/valhalla/valhalla.json`) e inizializza automaticamente `data/valhalla/valhalla.json` quando il file è assente, vuoto o non valido. Un file valido già presente viene mantenuto.
+
+Non è necessario copiare manualmente `valhalla.json` sul server. Dopo la pubblicazione della nuova immagine è sufficiente eseguire `docker compose pull` e `docker compose up -d`.
