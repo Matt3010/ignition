@@ -64,6 +64,9 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
+      - name: Check package-lock registry portability
+        run: bash ../.github/check-package-lock-registry.sh package-lock.json
+
       - name: Install dependencies
         run: bash ../.github/npm-ci.sh
 
@@ -106,6 +109,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
+      - name: Check package-lock registry portability
+        run: bash ../.github/check-package-lock-registry.sh package-lock.json
 
       - name: Install dependencies
         run: bash ../.github/npm-ci.sh
