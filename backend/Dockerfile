@@ -25,4 +25,4 @@ COPY docker ./docker
 COPY docker-compose.yml ./docker-compose.yml
 COPY package.json ./
 EXPOSE 3000
-CMD ["node", "dist/src/server.js"]
+CMD ["sh", "-c", "npm run migrate && node dist/src/server.js"]

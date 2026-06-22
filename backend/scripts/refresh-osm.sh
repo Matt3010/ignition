@@ -21,6 +21,7 @@ VALHALLA_STAGING_TILE_DIR="$(absolute_path "$VALHALLA_STAGING_TILE_DIR")"
 VALHALLA_PREVIOUS_TILE_DIR="$(absolute_path "$VALHALLA_PREVIOUS_TILE_DIR")"
 VALHALLA_FAILED_TILE_DIR="$(absolute_path "$VALHALLA_FAILED_TILE_DIR")"
 LOCK_DIR="$(dirname "$VALHALLA_TILE_DIR")/.osm-refresh-lock-$OSM_REGION"
+TILE_SNAPSHOT_READY=false
 
 acquire_lock() {
   mkdir -p "$(dirname "$LOCK_DIR")"
@@ -37,47 +38,104 @@ acquire_lock() {
   trap 'rm -rf "$LOCK_DIR"' EXIT
 }
 
-restart_valhalla() {
-  if [[ "$OSM_REFRESH_RESTART_VALHALLA" != "true" ]]; then return 0; fi
-  docker restart "$VALHALLA_CONTAINER_NAME" >/dev/null
+require_container_control() {
+  if [[ "$OSM_REFRESH_RESTART_VALHALLA" != "true" ]]; then
+    echo '{"event":"osm_refresh_invalid_configuration","reason":"OSM_REFRESH_RESTART_VALHALLA must be true for an atomic tile switch"}' >&2
+    exit 64
+  fi
+  docker inspect "$VALHALLA_CONTAINER_NAME" >/dev/null
+}
+
+stop_valhalla() {
+  docker stop "$VALHALLA_CONTAINER_NAME" >/dev/null
+}
+
+start_valhalla() {
+  docker start "$VALHALLA_CONTAINER_NAME" >/dev/null
+}
+
+clear_directory() {
+  local directory="$1"
+  mkdir -p "$directory"
+  find "$directory" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
+}
+
+move_directory_contents() {
+  local source="$1" destination="$2"
+  mkdir -p "$source" "$destination"
+  while IFS= read -r -d '' entry; do
+    mv -- "$entry" "$destination/" || return 1
+  done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
+}
+
+snapshot_current_tiles() {
+  clear_directory "$VALHALLA_PREVIOUS_TILE_DIR"
+  mkdir -p "$VALHALLA_TILE_DIR"
+  # Hard-link files where possible: this preserves a rollback copy without
+  # duplicating the large tile payload on the same filesystem.
+  cp -al "$VALHALLA_TILE_DIR/." "$VALHALLA_PREVIOUS_TILE_DIR/" || return 1
+  TILE_SNAPSHOT_READY=true
 }
 
 activate_staging_tiles() {
-  rm -rf "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"
-  if [[ -d "$VALHALLA_TILE_DIR" ]]; then mv "$VALHALLA_TILE_DIR" "$VALHALLA_PREVIOUS_TILE_DIR"; fi
-  mv "$VALHALLA_STAGING_TILE_DIR" "$VALHALLA_TILE_DIR"
+  TILE_SNAPSHOT_READY=false
+  [[ -f "$VALHALLA_STAGING_TILE_DIR/valhalla.json" ]] || {
+    echo "Missing staged valhalla.json in $VALHALLA_STAGING_TILE_DIR" >&2
+    return 1
+  }
+  [[ -d "$VALHALLA_STAGING_TILE_DIR/valhalla_tiles" ]] || {
+    echo "Missing staged valhalla_tiles in $VALHALLA_STAGING_TILE_DIR" >&2
+    return 1
+  }
+  clear_directory "$VALHALLA_FAILED_TILE_DIR" || return 1
+  snapshot_current_tiles || return 1
+  clear_directory "$VALHALLA_TILE_DIR" || return 1
+  move_directory_contents "$VALHALLA_STAGING_TILE_DIR" "$VALHALLA_TILE_DIR" || return 1
+  rmdir "$VALHALLA_STAGING_TILE_DIR" 2>/dev/null || true
 }
 
 rollback_tiles() {
   echo "{\"event\":\"osm_refresh_rollback_started\",\"region\":\"$OSM_REGION\"}" >&2
-  rm -rf "$VALHALLA_FAILED_TILE_DIR"
-  if [[ -d "$VALHALLA_TILE_DIR" ]]; then mv "$VALHALLA_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"; fi
-  if [[ -d "$VALHALLA_PREVIOUS_TILE_DIR" ]]; then mv "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_TILE_DIR"; fi
-  restart_valhalla || true
+  clear_directory "$VALHALLA_FAILED_TILE_DIR"
+  move_directory_contents "$VALHALLA_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"
+  move_directory_contents "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_TILE_DIR"
+  start_valhalla || true
   echo "{\"event\":\"osm_refresh_rollback_finished\",\"region\":\"$OSM_REGION\"}" >&2
 }
 
 echo "{\"event\":\"osm_refresh_started\",\"region\":\"$OSM_REGION\",\"tileDir\":\"$(json_escape "$VALHALLA_TILE_DIR")\"}"
 acquire_lock
+require_container_control
 npm run osm:download
 rm -rf "$VALHALLA_STAGING_TILE_DIR"
 VALHALLA_TILE_DIR="$VALHALLA_STAGING_TILE_DIR" \
   VALHALLA_BUILD_HOST_TILE_DIR="$VALHALLA_STAGING_BUILD_HOST_TILE_DIR" \
   npm run valhalla:build
 
-activate_staging_tiles
-if ! restart_valhalla; then
+stop_valhalla
+if ! activate_staging_tiles; then
+  if [[ "$TILE_SNAPSHOT_READY" == "true" ]]; then
+    rollback_tiles
+  else
+    start_valhalla || true
+  fi
+  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"tile_activation\",\"region\":\"$OSM_REGION\"}" >&2
+  exit 1
+fi
+if ! start_valhalla; then
   rollback_tiles
-  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"valhalla_restart\",\"region\":\"$OSM_REGION\"}" >&2
+  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"valhalla_start\",\"region\":\"$OSM_REGION\"}" >&2
   exit 1
 fi
 
 if [[ "$OSM_REFRESH_IMPORT_ALERTS" == "true" ]]; then
   if ! npm run import:osm-alerts; then
+    stop_valhalla || true
     rollback_tiles
     echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"alert_import\",\"region\":\"$OSM_REGION\"}" >&2
     exit 1
   fi
 fi
 
-echo "{\"event\":\"osm_refresh_finished\",\"region\":\"$OSM_REGION\",\"tileDir\":\"$(json_escape "$VALHALLA_TILE_DIR")\",\"restartedValhalla\":$OSM_REFRESH_RESTART_VALHALLA}"
+rm -rf "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"
+echo "{\"event\":\"osm_refresh_finished\",\"region\":\"$OSM_REGION\",\"tileDir\":\"$(json_escape "$VALHALLA_TILE_DIR")\",\"restartedValhalla\":true}"

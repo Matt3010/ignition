@@ -624,20 +624,27 @@ function operationalStatusFromTags(tags: Record<string, string>): "operational" 
   const disabled = tags.disabled?.trim().toLowerCase();
   const operational = tags.operational?.trim().toLowerCase();
   const status = tags.status?.trim().toLowerCase();
+  const disused = tags.disused?.trim().toLowerCase();
+  const removed = tags.removed?.trim().toLowerCase();
+  const abandoned = tags.abandoned?.trim().toLowerCase();
 
   if (isNegativeFixme(tags.fixme)) return "notOperational";
   if (working && negativeValues.has(working)) return "notOperational";
   if (disabled && positiveValues.has(disabled)) return "notOperational";
   if (operational && negativeValues.has(operational)) return "notOperational";
   if (status && ["removed", "inactive", "disabled", "not_operational", "not operational"].includes(status)) return "notOperational";
+  if (disused && positiveValues.has(disused)) return "notOperational";
+  if (removed && positiveValues.has(removed)) return "notOperational";
+  if (abandoned && positiveValues.has(abandoned)) return "notOperational";
   if (working && positiveValues.has(working)) return "operational";
+  if (disabled && negativeValues.has(disabled)) return "operational";
   if (operational && positiveValues.has(operational)) return "operational";
   return "unknown";
 }
 
 function operationalStatusReason(tags: Record<string, string>): string | null {
   if (tags.fixme) return tags.fixme;
-  for (const key of ["working", "disabled", "operational", "status"] as const) {
+  for (const key of ["working", "disabled", "operational", "status", "disused", "removed", "abandoned"] as const) {
     if (tags[key] !== undefined) return `${key}=${tags[key]}`;
   }
   return null;

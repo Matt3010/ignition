@@ -75,22 +75,6 @@ export async function registerErrorHandler(app: FastifyInstance): Promise<void> 
       });
     }
 
-    if (fastifyError.statusCode && fastifyError.statusCode >= 400 && fastifyError.statusCode < 500) {
-      logClientError(request, {
-        statusCode: fastifyError.statusCode,
-        code: "INVALID_REQUEST",
-        message: fastifyError.message ?? "Client request error",
-        details: [],
-      });
-      return reply.status(fastifyError.statusCode).send({
-        error: {
-          code: "INVALID_REQUEST",
-          message: fastifyError.message ?? "Request non valida",
-          details: [],
-        },
-      });
-    }
-
     if (error instanceof ApplicationError) {
       logClientError(request, {
         statusCode: error.statusCode,
@@ -103,6 +87,22 @@ export async function registerErrorHandler(app: FastifyInstance): Promise<void> 
           code: error.code,
           message: error.message,
           details: error.details,
+        },
+      });
+    }
+
+    if (fastifyError.statusCode && fastifyError.statusCode >= 400 && fastifyError.statusCode < 500) {
+      logClientError(request, {
+        statusCode: fastifyError.statusCode,
+        code: "INVALID_REQUEST",
+        message: fastifyError.message ?? "Client request error",
+        details: [],
+      });
+      return reply.status(fastifyError.statusCode).send({
+        error: {
+          code: "INVALID_REQUEST",
+          message: fastifyError.message ?? "Request non valida",
+          details: [],
         },
       });
     }

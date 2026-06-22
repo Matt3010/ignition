@@ -16,18 +16,18 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "migrate": "tsx scripts/migrate.ts",
+    "migrate": "node scripts/run-compiled.mjs migrate",
     "seed": "npm run import:osm-alerts",
-    "import:alerts": "tsx scripts/import-alerts.ts",
-    "import:osm-alerts": "tsx scripts/import-osm-alerts.ts",
-    "alerts:purge-non-osm": "tsx scripts/purge-non-osm-alerts.ts",
+    "import:alerts": "node scripts/run-compiled.mjs import-alerts",
+    "import:osm-alerts": "node scripts/run-compiled.mjs import-osm-alerts",
+    "alerts:purge-non-osm": "node scripts/run-compiled.mjs purge-non-osm-alerts",
     "valhalla:build": "bash scripts/build-valhalla-tiles.sh",
     "valhalla:package": "bash scripts/package-valhalla-tiles.sh",
-    "raspberry:smoke": "tsx scripts/raspberry-smoke.ts",
+    "raspberry:smoke": "node scripts/run-compiled.mjs raspberry-smoke",
     "osm:download": "bash scripts/download-osm-extract.sh",
     "osm:refresh": "bash scripts/refresh-osm.sh",
     "osm:refresh:loop": "bash scripts/osm-refresh-loop.sh",
-    "health": "tsx scripts/health.ts"
+    "health": "node scripts/run-compiled.mjs health"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -50,6 +50,6 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.9"
   }
 }

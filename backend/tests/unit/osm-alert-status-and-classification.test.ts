@@ -12,6 +12,19 @@ describe("OSM alert status and classification", () => {
     expect(alerts[1]).toMatchObject({ operationalStatus: "notOperational", statusReason: "disabled=true" });
   });
 
+
+  it("marks disabled=no as operational and disused/removed records as non operational", () => {
+    const xml = `<osm version="0.6">
+      <node id="3" lat="45.002" lon="11.002"><tag k="highway" v="speed_camera"/><tag k="disabled" v="no"/></node>
+      <node id="4" lat="45.003" lon="11.003"><tag k="highway" v="speed_camera"/><tag k="disused" v="yes"/></node>
+      <node id="5" lat="45.004" lon="11.004"><tag k="highway" v="speed_camera"/><tag k="removed" v="yes"/></node>
+    </osm>`;
+    const alerts = parseOsmAlerts(xml).alerts;
+    expect(alerts[0]).toMatchObject({ operationalStatus: "operational", statusReason: "disabled=no" });
+    expect(alerts[1]).toMatchObject({ operationalStatus: "notOperational", statusReason: "disused=yes" });
+    expect(alerts[2]).toMatchObject({ operationalStatus: "notOperational", statusReason: "removed=yes" });
+  });
+
   it("classifies traffic-signal enforcement as red-light cameras without dropping them", () => {
     const xml = `<osm version="0.6">
       <node id="1" lat="45" lon="11"><tag k="highway" v="speed_camera"/><tag k="enforcement" v="traffic_signals"/></node>

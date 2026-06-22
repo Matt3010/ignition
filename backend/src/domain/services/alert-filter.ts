@@ -30,7 +30,10 @@ export function filterRelevantAlerts(input: AlertFilterInput): AlertCandidate[] 
       const bearingToAlert = initialBearing(input.userLatitude, input.userLongitude, alert.latitude, alert.longitude);
       const difference = angularDifference(travelBearing, bearingToAlert);
       if (difference === null || difference < input.behindMinAngleDegrees) return true;
-      if (difference >= input.behindImmediateAngleDegrees && alert.roadId === null) return false;
+      // A single GPS sample is not enough to prove that an alert has been passed:
+      // on hairpins and ramps an alert can be geometrically behind while still ahead
+      // along the road. Only suppress it after a second sample proves that the
+      // vehicle is moving away and the alert is almost exactly behind.
       if (!input.previousPosition) return true;
 
       const previousDistance = haversineMeters(
@@ -45,7 +48,10 @@ export function filterRelevantAlerts(input: AlertFilterInput): AlertCandidate[] 
         alert.latitude,
         alert.longitude,
       );
-      return currentDistance < previousDistance + input.behindMinDistanceIncreaseMeters;
+      const movingAway =
+        currentDistance >= previousDistance + input.behindMinDistanceIncreaseMeters;
+      if (!movingAway) return true;
+      return difference < input.behindImmediateAngleDegrees;
     })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }

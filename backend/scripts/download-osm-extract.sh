@@ -29,12 +29,22 @@ fi
 
 mkdir -p "$OSM_DATA_DIR"
 target="$OSM_DATA_DIR/$OSM_REGION.osm.pbf"
+tmp_target="$OSM_DATA_DIR/$OSM_REGION.download.osm.pbf"
 alerts_target="$OSM_DATA_DIR/$OSM_REGION.alerts.osm"
+trap 'rm -f "$tmp_target"' EXIT
 
 echo "Downloading OSM extract from $OSM_EXTRACT_URL"
 echo "Target: $target"
-curl -L --fail --output "$target.tmp" "$OSM_EXTRACT_URL"
-mv "$target.tmp" "$target"
+curl -L --fail --retry 3 --retry-delay 2 --retry-all-errors --output "$tmp_target" "$OSM_EXTRACT_URL"
+if command -v osmium >/dev/null 2>&1; then
+  osmium fileinfo "$tmp_target" >/dev/null
+else
+  docker run --rm \
+    -v "$(pwd)/$OSM_DATA_DIR:/data" \
+    ghcr.io/osmcode/osmium-tool:latest \
+    osmium fileinfo "/data/$OSM_REGION.download.osm.pbf" >/dev/null
+fi
+mv "$tmp_target" "$target"
 echo "Done"
 
 echo "Preparing lossless alert subset: $alerts_target"
@@ -64,3 +74,4 @@ else
       --overwrite --output "/data/$OSM_REGION.alerts.osm"
 fi
 echo "Done"
+trap - EXIT

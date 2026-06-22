@@ -205,7 +205,7 @@ Aggiornamento automatico ogni 24 ore:
 docker compose --profile maintenance up -d osm-refresh
 ```
 
-Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`: dorme `OSM_REFRESH_INTERVAL_SECONDS` secondi, default `86400`, poi scarica il nuovo estratto, ricostruisce le tile in staging, importa gli alert e riavvia Valhalla. Per eseguire un refresh anche all'avvio:
+Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`: dorme `OSM_REFRESH_INTERVAL_SECONDS` secondi, default `86400`, poi scarica e valida il nuovo estratto, ricostruisce le tile in staging, le attiva mantenendo stabile il mount di Valhalla, importa gli alert e applica rollback delle tile se una fase critica fallisce. Per eseguire un refresh anche all'avvio:
 
 ```bash
 OSM_REFRESH_RUN_ON_START=true docker compose --profile maintenance up -d osm-refresh
@@ -371,8 +371,9 @@ Avvio su Raspberry:
 cd ~/road-context/backend
 cp .env.example .env
 docker compose -f docker-compose.yml up -d --build postgres valhalla backend
-docker compose -f docker-compose.yml exec backend node dist/scripts/migrate.js
 ```
+
+Il container `backend` applica automaticamente le migration tracciate prima di avviare l’API. Le migration già applicate vengono saltate e una modifica successiva a un file già eseguito viene rifiutata tramite checksum.
 
 Smoke test da host o Raspberry:
 

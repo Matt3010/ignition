@@ -53,3 +53,46 @@ describe("PostGIS alert repository", () => {
     ]);
   });
 });
+
+it("binds every upsert placeholder and commits atomically", async () => {
+  const calls: Array<{ sql: string; values: unknown[] }> = [];
+  const client = {
+    query: async (sql: string, values: unknown[] = []) => {
+      calls.push({ sql, values });
+      return { rows: [], rowCount: 1 };
+    },
+    release: () => undefined,
+  };
+  const repository = new PostgisAlertRepository({
+    connect: async () => client,
+  } as any);
+
+  await repository.upsertMany([{
+    id: "11111111-1111-4111-a111-111111111111",
+    type: "fixedSpeedCamera",
+    latitude: 45,
+    longitude: 11,
+    speedLimitKmh: 70,
+    speedLimitSource: "explicit",
+    direction: "forward",
+    bearing: 10,
+    roadId: null,
+    confidence: 0.9,
+    active: true,
+    validFrom: null,
+    validUntil: null,
+    source: "osm",
+    directionBearings: [10],
+    osmPresenceStatus: "present",
+  }]);
+
+  const insert = calls.find((call) => call.sql.includes("insert into road_alerts"));
+  expect(insert).toBeDefined();
+  const placeholders = [...insert!.sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
+  expect(Math.max(...placeholders)).toBe(insert!.values.length);
+  expect(calls.map((call) => call.sql.trim())).toEqual([
+    "begin",
+    expect.stringContaining("insert into road_alerts"),
+    "commit",
+  ]);
+});

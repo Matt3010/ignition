@@ -48,6 +48,24 @@ describe("HTTP API", () => {
     await app.close();
   });
 
+  it("preserves structured ApplicationError details", async () => {
+    const app = await buildApp(testConfig({ MAX_GPS_ACCURACY_METERS: 10 }));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: { ...validPayload, horizontalAccuracyMeters: 20 },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INVALID_REQUEST",
+        message: "Accuratezza GPS troppo bassa",
+        details: [{ path: "horizontalAccuracyMeters", max: 10 }],
+      },
+    });
+    await app.close();
+  });
+
   it("supports matched false scenario", async () => {
     const app = await buildApp(testConfig());
     const response = await app.inject({

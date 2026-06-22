@@ -9,6 +9,23 @@ services:
       DATABASE_URL: postgres://road:road@postgres:5432/road_context
       VALHALLA_BASE_URL: http://valhalla:8002
       ROAD_CONTEXT_PROVIDER: valhalla
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-5000}
+      VALHALLA_TIMEOUT_MS: ${VALHALLA_TIMEOUT_MS:-2500}
+      MAX_GPS_ACCURACY_METERS: ${MAX_GPS_ACCURACY_METERS:-50}
+      ALERT_SEARCH_RADIUS_METERS: ${ALERT_SEARCH_RADIUS_METERS:-1500}
+      ALERT_BEHIND_MIN_ANGLE_DEGREES: ${ALERT_BEHIND_MIN_ANGLE_DEGREES:-135}
+      ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES: ${ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES:-170}
+      ALERT_BEHIND_MIN_SPEED_KMH: ${ALERT_BEHIND_MIN_SPEED_KMH:-5}
+      ALERT_BEHIND_MAX_GPS_ACCURACY_METERS: ${ALERT_BEHIND_MAX_GPS_ACCURACY_METERS:-25}
+      ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS: ${ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS:-5}
+      SESSION_TRACE_TTL_SECONDS: ${SESSION_TRACE_TTL_SECONDS:-180}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PAYLOAD_LIMIT_BYTES: ${PAYLOAD_LIMIT_BYTES:-65536}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-180}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1 minute}
+      MIN_CLIENT_INTERVAL_MS: ${MIN_CLIENT_INTERVAL_MS:-1000}
+      API_VERSION: ${API_VERSION:-1.0.0}
       OSM_EXTRACT_PRESET: ${OSM_EXTRACT_PRESET:-italy}
       OSM_EXTRACT_URL: ${OSM_EXTRACT_URL:-}
       OSM_REGION: ${OSM_REGION:-italy}
@@ -29,7 +46,7 @@ services:
     networks:
       - road-context
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -55,10 +72,15 @@ services:
       VALHALLA_CONTAINER_NAME: road-context-valhalla
       OSM_REFRESH_INTERVAL_SECONDS: ${OSM_REFRESH_INTERVAL_SECONDS:-86400}
       OSM_REFRESH_RUN_ON_START: ${OSM_REFRESH_RUN_ON_START:-false}
+      OSM_REFRESH_RESTART_VALHALLA: ${OSM_REFRESH_RESTART_VALHALLA:-true}
+      OSM_REFRESH_IMPORT_ALERTS: ${OSM_REFRESH_IMPORT_ALERTS:-true}
+      OSM_REFRESH_LOCK_TIMEOUT_SECONDS: ${OSM_REFRESH_LOCK_TIMEOUT_SECONDS:-3600}
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
+      backend:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       valhalla:
