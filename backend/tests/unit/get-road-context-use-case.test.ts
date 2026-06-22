@@ -25,6 +25,7 @@ function matched(timestamp: string, roadId: string): RoadMatch {
 function unmatched(timestamp: string): RoadMatch {
   return {
     matched: false,
+    unmatchedReason: "noMatch",
     roadId: null,
     roadName: null,
     speedLimitKmh: null,
@@ -91,6 +92,43 @@ describe("GetRoadContextUseCase transactional session flow", () => {
     shouldFail = false;
     await expect(useCase.execute(validPayload)).resolves.toMatchObject({ matched: false });
     expect(traceStore.getState(validPayload.sessionId)?.confidence).toBe(0.8);
+  });
+
+  it("does not degrade road state when Valhalla has a provider error", async () => {
+    const traceStore = new SessionTraceStore(60_000);
+    traceStore.setState(validPayload.sessionId, {
+      roadId: "road-a",
+      roadType: "primary",
+      direction: "forward",
+      confidence: 0.8,
+    });
+    const provider: RoadContextProvider = {
+      match: async ({ sample }) => ({
+        ...unmatched(sample.timestamp),
+        unmatchedReason: "providerError",
+      }),
+      health: async () => "down",
+    };
+    const useCase = new GetRoadContextUseCase(
+      provider,
+      repository(async () => []),
+      traceStore,
+      testConfig(),
+    );
+
+    for (let offset = 0; offset < 3; offset += 1) {
+      await expect(
+        useCase.execute({
+          ...validPayload,
+          timestamp: new Date(Date.parse(validPayload.timestamp) + offset * 1_000).toISOString(),
+        }),
+      ).resolves.toMatchObject({ matched: false });
+    }
+
+    expect(traceStore.getState(validPayload.sessionId)).toMatchObject({
+      roadId: "road-a",
+      confidence: 0.8,
+    });
   });
 
   it("serializes requests of the same session and leaves the newest state committed", async () => {

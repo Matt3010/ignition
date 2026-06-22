@@ -82,7 +82,7 @@ export class GetRoadContextUseCase {
           direction: match.direction,
           confidence: match.confidence,
         });
-      } else {
+      } else if (match.unmatchedReason === "noMatch") {
         this.traceStore.registerMatchMiss(sample.sessionId);
       }
 

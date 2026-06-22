@@ -11,6 +11,17 @@ describe("Valhalla provider", () => {
     });
     const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
     expect(result.matched).toBe(false);
+    if (!result.matched) expect(result.unmatchedReason).toBe("providerError");
+  });
+
+  it("distinguishes a valid no-match response from a provider failure", async () => {
+    const provider = new ValhallaRoadContextProvider({
+      traceAttributes: async () => ({ edges: [], matched_points: [] }),
+      health: async () => "up",
+    });
+    const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+    expect(result.matched).toBe(false);
+    if (!result.matched) expect(result.unmatchedReason).toBe("noMatch");
   });
 
   it("parses matched edge response", async () => {

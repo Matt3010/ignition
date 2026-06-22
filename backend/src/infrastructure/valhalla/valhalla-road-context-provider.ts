@@ -47,7 +47,7 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
       const data = (await this.client.traceAttributes(points)) as ValhallaTraceAttributes;
       const matched = data.matched_points?.at(-1);
       const edge = matched?.edge_index !== undefined ? data.edges?.[matched.edge_index] : data.edges?.at(-1);
-      if (!matched || !edge) return unmatched(input.sample, 0.15);
+      if (!matched || !edge) return unmatched(input.sample, 0.15, "noMatch");
 
       const distance = Number(matched.distance_from_trace_point ?? input.sample.horizontalAccuracyMeters);
       const speedLimit = parseMaxspeed(edge.speed_limit);
@@ -78,7 +78,7 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
         },
         "Valhalla road match failed",
       );
-      return unmatched(input.sample, 0);
+      return unmatched(input.sample, 0, "providerError");
     }
   }
 
@@ -144,9 +144,10 @@ function qualityFromMatchedPoint(
   return Math.max(0, Math.min(1, Number((typeScore * 0.55 + distanceScore * 0.45).toFixed(2))));
 }
 
-function unmatched(sample: GpsSample, quality: number): RoadMatch {
+function unmatched(sample: GpsSample, quality: number, unmatchedReason: "noMatch" | "providerError"): RoadMatch {
   return {
     matched: false,
+    unmatchedReason,
     roadId: null,
     roadName: null,
     speedLimitKmh: null,

@@ -19,7 +19,6 @@ export class SessionTraceStore {
   add(sample: GpsSample): GpsSample[] {
     const now = Date.now();
     this.cleanup(now);
-    this.touch(sample.sessionId, now);
     const previous = this.traces.get(sample.sessionId) ?? [];
     const sampleTime = Date.parse(sample.timestamp);
     const latestTime = previous.length > 0 ? Date.parse(previous[previous.length - 1].timestamp) : null;
@@ -31,6 +30,7 @@ export class SessionTraceStore {
         [{ path: "timestamp", previousTimestamp: previous[previous.length - 1].timestamp }],
       );
     }
+    this.touch(sample.sessionId, now);
     const next = [...previous, sample]
       .filter((item) => {
         const age = now - Date.parse(item.timestamp);

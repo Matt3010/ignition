@@ -25,8 +25,11 @@ export interface MatchedRoad {
   valhallaQuality: number;
 }
 
+export type UnmatchedReason = "noMatch" | "providerError";
+
 export interface UnmatchedRoad {
   matched: false;
+  unmatchedReason: UnmatchedReason;
   roadId: null;
   roadName: null;
   speedLimitKmh: null;
@@ -42,7 +45,7 @@ export interface UnmatchedRoad {
 
 export type RoadMatch = MatchedRoad | UnmatchedRoad;
 
-export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceMeters" | "bearing" | "valhallaQuality"> {
+export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceMeters" | "bearing" | "valhallaQuality" | "unmatchedReason"> {
   alerts: Array<{
     id: string;
     type: AlertCandidate["type"];

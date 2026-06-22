@@ -33,6 +33,7 @@ export class MockRoadContextProvider implements RoadContextProvider {
     if (scenario === "matchedFalse") {
       return {
         matched: false,
+        unmatchedReason: "noMatch",
         roadId: null,
         roadName: null,
         speedLimitKmh: null,

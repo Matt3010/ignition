@@ -121,3 +121,22 @@ it("resets consecutive match misses when a new road match is committed", () => {
     confidence: 0.9,
   });
 });
+
+
+it("does not refresh session recency when a duplicate sample is rejected", () => {
+  const store = new SessionTraceStore(60_000, 8, 2);
+  const baseTime = Date.now();
+  const sessionA = "00000000-0000-4000-8000-00000000000a";
+  const sessionB = "00000000-0000-4000-8000-00000000000b";
+  const sessionC = "00000000-0000-4000-8000-00000000000c";
+  const sampleA = { ...validPayload, sessionId: sessionA, timestamp: new Date(baseTime).toISOString() };
+  const sampleB = { ...validPayload, sessionId: sessionB, timestamp: new Date(baseTime + 1).toISOString() };
+
+  store.add(sampleA);
+  store.add(sampleB);
+  expect(() => store.add(sampleA)).toThrow();
+  store.add({ ...validPayload, sessionId: sessionC, timestamp: new Date(baseTime + 2).toISOString() });
+
+  expect(() => store.add(sampleB)).toThrow();
+  expect(() => store.add(sampleA)).not.toThrow();
+});
