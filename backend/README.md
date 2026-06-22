@@ -423,3 +423,13 @@ Non è necessario copiare manualmente `valhalla.json` sul server. Dopo la pubbli
 nella directory di staging. Un riavvio riprende dall'ultima fase completata e
 non elimina `valhalla.next`. Le tile attive vengono sostituite solo dopo build,
 health check e import alert completati.
+
+### Percorsi host portabili per la build Valhalla
+
+Il percorso host usato dal container temporaneo di build viene risolto da Docker Compose con `${PWD}`:
+
+```yaml
+VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${PWD}/data/valhalla.next
+```
+
+Non impostare questa variabile nel file `.env`: un valore relativo come `./data/valhalla.next` verrebbe passato a `docker run -v` e interpretato come nome di volume. Avvia i comandi dalla directory che contiene il relativo `docker-compose.yml`; in questo modo il percorso assoluto viene calcolato automaticamente e il deploy resta portabile tra server diversi.
