@@ -16,6 +16,16 @@ validate_json() {
   ' "$1" >/dev/null 2>&1
 }
 
+same_json() {
+  node -e '
+    const fs = require("node:fs");
+    const [leftPath, rightPath] = process.argv.slice(1);
+    const left = JSON.parse(fs.readFileSync(leftPath, "utf8"));
+    const right = JSON.parse(fs.readFileSync(rightPath, "utf8"));
+    process.exit(JSON.stringify(left) === JSON.stringify(right) ? 0 : 1);
+  ' "$1" "$2" >/dev/null 2>&1
+}
+
 if [[ ! -f "$TEMPLATE_PATH" ]] || ! validate_json "$TEMPLATE_PATH"; then
   echo "Valhalla configuration template is missing or invalid: $TEMPLATE_PATH" >&2
   exit 1
@@ -23,8 +33,8 @@ fi
 
 mkdir -p "$TARGET_DIR"
 
-if [[ -f "$TARGET_PATH" ]] && validate_json "$TARGET_PATH"; then
-  echo "Valhalla configuration already valid: $TARGET_PATH"
+if [[ -f "$TARGET_PATH" ]] && validate_json "$TARGET_PATH" && same_json "$TEMPLATE_PATH" "$TARGET_PATH"; then
+  echo "Valhalla configuration already up to date: $TARGET_PATH"
   exit 0
 fi
 
@@ -37,4 +47,6 @@ cp "$TEMPLATE_PATH" "$TEMP_PATH"
 validate_json "$TEMP_PATH"
 mv -f "$TEMP_PATH" "$TARGET_PATH"
 
-echo "Valhalla configuration initialized: $TARGET_PATH"
+if [[ -f "$TARGET_PATH" ]]; then
+  echo "Valhalla configuration synchronized from project template: $TARGET_PATH"
+fi

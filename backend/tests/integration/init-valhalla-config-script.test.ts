@@ -50,7 +50,7 @@ describeOnUnix("init-valhalla-config.sh", () => {
     });
   });
 
-  it("preserves an existing valid configuration", async () => {
+  it("replaces an existing valid but outdated configuration", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "valhalla-init-existing-"));
     const template = path.join(root, "template.json");
     const target = path.join(root, "valhalla.json");
@@ -60,7 +60,22 @@ describeOnUnix("init-valhalla-config.sh", () => {
     const result = runInit(template, target);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(JSON.parse(await readFile(target, "utf8"))).toEqual({ version: "custom" });
+    expect(JSON.parse(await readFile(target, "utf8"))).toEqual({ version: "template" });
+  });
+
+  it("preserves an existing configuration that already matches the template", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "valhalla-init-current-"));
+    const template = path.join(root, "template.json");
+    const target = path.join(root, "valhalla.json");
+    const config = { mjolnir: { tile_dir: "/custom_files/valhalla_tiles" } };
+    await writeFile(template, JSON.stringify(config));
+    await writeFile(target, JSON.stringify(config));
+
+    const result = runInit(template, target);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("already up to date");
+    expect(JSON.parse(await readFile(target, "utf8"))).toEqual(config);
   });
 
   it("fails before touching the target when the template is invalid", async () => {
