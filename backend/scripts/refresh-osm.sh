@@ -12,6 +12,7 @@ VALHALLA_CONTAINER_NAME="${VALHALLA_CONTAINER_NAME:-road-context-valhalla}"
 OSM_REFRESH_RESTART_VALHALLA="${OSM_REFRESH_RESTART_VALHALLA:-true}"
 OSM_REFRESH_IMPORT_ALERTS="${OSM_REFRESH_IMPORT_ALERTS:-true}"
 OSM_REFRESH_LOCK_TIMEOUT_SECONDS="${OSM_REFRESH_LOCK_TIMEOUT_SECONDS:-3600}"
+OSM_REFRESH_LOCK_STALE_SECONDS="${OSM_REFRESH_LOCK_STALE_SECONDS:-7200}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 json_escape() { node -e "process.stdout.write(JSON.stringify(process.argv[1]).slice(1,-1))" "$1"; }
@@ -23,11 +24,36 @@ VALHALLA_FAILED_TILE_DIR="$(absolute_path "$VALHALLA_FAILED_TILE_DIR")"
 LOCK_DIR="$(dirname "$VALHALLA_TILE_DIR")/.osm-refresh-lock-$OSM_REGION"
 TILE_SNAPSHOT_READY=false
 
+lock_is_stale() {
+  local owner_file="$LOCK_DIR/owner" owner_pid="" owner_host="" owner_started="0" now age
+  if [[ -f "$owner_file" ]]; then
+    IFS=' ' read -r owner_pid owner_host owner_started < "$owner_file" || true
+  fi
+  now="$(date +%s)"
+  if [[ "$owner_started" =~ ^[0-9]+$ ]]; then age=$((now - owner_started)); else age=0; fi
+  if [[ -n "$owner_pid" && "$owner_host" == "$(hostname)" ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+    return 0
+  fi
+  [[ "$age" -ge "$OSM_REFRESH_LOCK_STALE_SECONDS" ]]
+}
+
+remove_stale_lock() {
+  local tombstone="${LOCK_DIR}.stale.$$.$RANDOM"
+  if mv "$LOCK_DIR" "$tombstone" 2>/dev/null; then
+    rm -rf "$tombstone"
+    echo "{\"event\":\"osm_refresh_stale_lock_removed\",\"region\":\"$OSM_REGION\"}" >&2
+  fi
+}
+
 acquire_lock() {
   mkdir -p "$(dirname "$LOCK_DIR")"
   local started now elapsed
   started="$(date +%s)"
   while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    if lock_is_stale; then
+      remove_stale_lock
+      continue
+    fi
     now="$(date +%s)"; elapsed=$((now - started))
     if [[ "$elapsed" -ge "$OSM_REFRESH_LOCK_TIMEOUT_SECONDS" ]]; then
       echo "{\"event\":\"osm_refresh_lock_timeout\",\"region\":\"$OSM_REGION\",\"lockDir\":\"$(json_escape "$LOCK_DIR")\",\"waitedSeconds\":$elapsed}" >&2
@@ -35,6 +61,7 @@ acquire_lock() {
     fi
     sleep 5
   done
+  printf '%s %s %s\n' "$$" "$(hostname)" "$(date +%s)" > "$LOCK_DIR/owner"
   trap 'rm -rf "$LOCK_DIR"' EXIT
 }
 

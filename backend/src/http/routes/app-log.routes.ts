@@ -21,6 +21,7 @@ export async function registerAppLogRoutes(app: FastifyInstance): Promise<void> 
         response: {
           200: zodToJsonSchema(appLogResponseSchema),
           400: zodToJsonSchema(normalizedErrorSchema),
+          413: zodToJsonSchema(normalizedErrorSchema),
           500: zodToJsonSchema(normalizedErrorSchema),
         },
       },

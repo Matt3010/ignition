@@ -86,6 +86,9 @@ describe("HTTP API", () => {
     const openapi = await app.inject({ method: "GET", url: "/documentation/json" });
     const config = await app.inject({ method: "GET", url: "/api/v1/config" });
     expect(openapi.statusCode).toBe(200);
+    const document = openapi.json();
+    expect(document.paths["/api/v1/road-context"].post.responses).toHaveProperty("413");
+    expect(document.paths["/api/v1/app-logs"].post.responses).toHaveProperty("413");
     expect(config.json().supportedAlertTypes).toContain("roadWorks");
     await app.close();
   });

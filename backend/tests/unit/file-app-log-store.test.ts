@@ -92,3 +92,23 @@ it("handles concurrent writes from different sessions without losing active base
   const files = (await readdir(directory)).filter((file) => file.endsWith(".jsonl"));
   for (const id of sessionIds) expect(files).toContain(`${id}.jsonl`);
 });
+
+it("keeps maxFiles as a hard limit across many concurrent sessions", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "file-app-log-store-hard-limit-"));
+  const store = new FileAppLogStore(directory, {
+    maxFileBytes: 10_000,
+    maxFiles: 3,
+    retentionMs: 60_000,
+  });
+  const sessionIds = Array.from({ length: 12 }, (_, index) =>
+    `550e8400-e29b-41d4-a716-44665544${String(index).padStart(4, "0")}`,
+  );
+
+  await Promise.all(sessionIds.map((id, index) => store.append({ ...payload(index), sessionId: id }, {
+    requestId: `hard-${index}`,
+    receivedAt: "2026-06-22T12:00:00Z",
+  })));
+
+  const files = (await readdir(directory)).filter((file) => file.endsWith(".jsonl"));
+  expect(files.length).toBeLessThanOrEqual(3);
+});

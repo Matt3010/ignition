@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -89,6 +89,20 @@ describeOnUnix("OSM refresh script", () => {
       await expect(execFileAsync("bash", [script], { cwd: process.cwd(), env: test.env })).rejects.toThrow();
       await expect(readFile(path.join(test.current, "valhalla_tiles", "old.tile"), "utf8")).resolves.toContain("old");
       await expect(readFile(path.join(test.current, "valhalla_tiles", "new.tile"), "utf8")).rejects.toThrow();
+    } finally {
+      await rm(test.root, { recursive: true, force: true });
+    }
+  });
+
+  it("removes an orphaned refresh lock before continuing", async () => {
+    const test = await fixture();
+    const lockDir = path.join(path.dirname(test.current), ".osm-refresh-lock-italy");
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(path.join(lockDir, "owner"), `999999 ${hostname()} 1\n`);
+      const result = await execFileAsync("bash", [script], { cwd: process.cwd(), env: { ...test.env, OSM_REFRESH_LOCK_STALE_SECONDS: "1" } });
+      expect(result.stderr).toContain("osm_refresh_stale_lock_removed");
+      await expect(readFile(path.join(test.current, "valhalla_tiles", "new.tile"), "utf8")).resolves.toContain("new");
     } finally {
       await rm(test.root, { recursive: true, force: true });
     }

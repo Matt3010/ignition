@@ -111,7 +111,7 @@ services:
       retries: 5
 
   valhalla:
-    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    image: ${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}
     container_name: road-context-valhalla
     platform: linux/arm64/v8
     entrypoint: ["valhalla_service"]

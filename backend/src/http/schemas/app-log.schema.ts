@@ -8,7 +8,15 @@ const isoDateSchema = z
 export const appLogRequestSchema = z.object({
   sessionId: z.string().uuid(),
   createdAt: isoDateSchema,
-  kind: z.enum(["session_start", "session_stop", "road_context_event", "client_error"]),
+  kind: z.enum([
+    "session_start",
+    "session_stop",
+    "road_context_event",
+    "client_error",
+    "location_error",
+    "session_permission_denied",
+    "session_permission_unknown",
+  ]),
   platform: z.literal("ios"),
   appName: z.string().min(1).max(80),
   appVersion: z.string().min(1).max(40).optional(),

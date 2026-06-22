@@ -39,5 +39,5 @@ docker run --rm --platform linux/arm64/v8 \
   --entrypoint valhalla_build_tiles \
   -v "${OSM_MOUNT_DIR_ABS}:/data/osm" \
   -v "${VALHALLA_MOUNT_DIR_ABS}:/custom_files" \
-  ghcr.io/gis-ops/docker-valhalla/valhalla:latest \
+  "${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}" \
   -c /custom_files/valhalla.json "$OSM_INPUT"

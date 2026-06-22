@@ -17,7 +17,7 @@ export class AppLogController {
       {
         sessionHash: hashSessionId(payload.sessionId),
         kind: payload.kind,
-        file,
+        rotated: file != `${payload.sessionId}.jsonl`,
       },
       "app debug log stored",
     );

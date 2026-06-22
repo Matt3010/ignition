@@ -109,3 +109,44 @@ it("logs only a hashed session identifier on provider failures", async () => {
   expect(warnings[0]?.sessionHash).toMatch(/^s_[0-9a-f]+$/);
   expect(warnings[0]?.sessionHash).not.toBe(validPayload.sessionId);
 });
+
+it("treats an explicit unmatched Valhalla point as a real no-match", async () => {
+  const provider = new ValhallaRoadContextProvider({
+    traceAttributes: async () => ({
+      matched_points: [{ type: "unmatched", distance_from_trace_point: 2 }],
+      edges: [{ way_id: 1, road_class: "primary" }],
+    }),
+    health: async () => "up",
+  });
+  const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+  expect(result.matched).toBe(false);
+  if (!result.matched) expect(result.unmatchedReason).toBe("noMatch");
+});
+
+it("treats unknown or missing matched-point types as provider errors", async () => {
+  for (const matchedPoint of [{ edge_index: 0, type: "unknown" }, { edge_index: 0 }]) {
+    const provider = new ValhallaRoadContextProvider({
+      traceAttributes: async () => ({
+        matched_points: [matchedPoint],
+        edges: [{ way_id: 1, road_class: "primary" }],
+      }),
+      health: async () => "up",
+    });
+    const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+    expect(result.matched).toBe(false);
+    if (!result.matched) expect(result.unmatchedReason).toBe("providerError");
+  }
+});
+
+it("accepts interpolated Valhalla points as matches with reduced quality", async () => {
+  const provider = new ValhallaRoadContextProvider({
+    traceAttributes: async () => ({
+      matched_points: [{ edge_index: 0, type: "interpolated", distance_from_trace_point: 2 }],
+      edges: [{ way_id: 1, road_class: "primary" }],
+    }),
+    health: async () => "up",
+  });
+  const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+  expect(result.matched).toBe(true);
+  expect(result.valhallaQuality).toBeLessThan(1);
+});

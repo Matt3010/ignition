@@ -33,13 +33,18 @@ const valhallaEdgeSchema = z
     }
   });
 
-const valhallaMatchedPointSchema = z
-  .object({
+const valhallaMatchedPointSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.enum(["matched", "interpolated"]),
     edge_index: z.number().int().nonnegative(),
     distance_from_trace_point: z.number().finite().optional(),
-    type: z.string().optional(),
-  })
-  .passthrough();
+  }).passthrough(),
+  z.object({
+    type: z.literal("unmatched"),
+    edge_index: z.number().int().nonnegative().optional(),
+    distance_from_trace_point: z.number().finite().optional(),
+  }).passthrough(),
+]);
 
 const valhallaTraceAttributesSchema = z
   .object({
@@ -66,7 +71,9 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
       const points = input.trace.map(toValhallaPoint);
       const data = valhallaTraceAttributesSchema.parse(await this.client.traceAttributes(points));
       const matched = data.matched_points.at(-1);
-      if (!matched) return unmatched(input.sample, 0.15, "noMatch");
+      if (!matched || matched.type === "unmatched") {
+        return unmatched(input.sample, 0.15, "noMatch");
+      }
 
       const edge = data.edges[matched.edge_index];
       if (!edge) {
@@ -163,7 +170,7 @@ function qualityFromMatchedPoint(
   distanceMeters: number,
   accuracyMeters: number,
 ): number {
-  const typeScore = matched.type === "matched" ? 1 : matched.type === "interpolated" ? 0.72 : 0.55;
+  const typeScore = matched.type === "matched" ? 1 : 0.72;
   const distanceScore = Math.max(0, 1 - distanceMeters / Math.max(accuracyMeters * 4, 20));
   return Math.max(0, Math.min(1, Number((typeScore * 0.55 + distanceScore * 0.45).toFixed(2))));
 }

@@ -327,7 +327,7 @@ final class LocationRecorder: NSObject, ObservableObject {
         guard currentSessionEvents.isEmpty, event.errorMessage == nil, let response = event.response else {
             return false
         }
-        return !response.matched
+        return !response.matched && (response.matchStatus == nil || response.matchStatus == "noMatch")
     }
 
     private func persistCurrentSession(refreshList: Bool = false) {

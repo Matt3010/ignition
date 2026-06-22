@@ -25,6 +25,34 @@ describe("HTTP hardening", () => {
     await app.close();
   });
 
+  it("rejects oversized app log payloads with the documented normalized 413 response", async () => {
+    const app = await buildApp(testConfig({ PAYLOAD_LIMIT_BYTES: 220 }));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/app-logs",
+      headers: { "content-type": "application/json" },
+      payload: {
+        sessionId: validPayload.sessionId,
+        createdAt: "2026-06-17T20:30:01Z",
+        kind: "client_error",
+        platform: "ios",
+        appName: "RoadRecorder",
+        backendBaseURL: "https://example.test",
+        message: "x".repeat(500),
+      },
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INVALID_REQUEST",
+        message: "Payload troppo grande",
+        details: [],
+      },
+    });
+    await app.close();
+  });
+
   it("blocks debug scenarios in production", async () => {
     const app = await buildApp(
       testConfig({
