@@ -7,12 +7,6 @@ dev:
 test:
 	npm test
 
-drive-test:
-	npm run test:drive
-
-drive-test-real:
-	npm run test:drive:real
-
 lint:
 	npm run lint
 

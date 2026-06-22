@@ -50,7 +50,7 @@ Endpoint principali:
 
 ## Modalità Reale
 
-Il flusso operativo usa Valhalla, PostgreSQL/PostGIS e dati OpenStreetMap locali. `npm run test:drive` e `npm run test:drive:real` avviano guida reale simulata, non fixture alert.
+Il flusso operativo usa Valhalla, PostgreSQL/PostGIS e dati OpenStreetMap locali.
 
 Esempio API:
 
@@ -218,98 +218,6 @@ Refresh manuale:
 ```bash
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context npm run osm:refresh
 ```
-
-## Test Di Guida Continuo
-
-Test di guida reale: GPS simulato lungo una route Valhalla, provider reali, PostGIS e tile già preparate. `npm run test:drive` è reale quanto `npm run test:drive:real`. Non invia scenari debug e fallisce se `/ready` non è pronto.
-
-```bash
-DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
-VALHALLA_BASE_URL=http://127.0.0.1:8002 \
-DRIVE_SOAK_START_LAT=45.45 \
-DRIVE_SOAK_START_LON=11.90 \
-npm run test:drive:real
-```
-
-Comando equivalente:
-
-```bash
-npm run test:drive
-```
-
-Il test stampa eventi leggibili durante la guida:
-
-- route Valhalla caricata o fallback a simulazione libera;
-- fermata e ripartenza;
-- svolte e inversioni;
-- cambio strada;
-- limite corrente e superamento limite;
-- alert piu vicino;
-- strada non agganciata o confidence bassa.
-
-Quando lo interrompi con `Ctrl-C`, stampa il riepilogo finale con km percorsi, tempo guida simulato, velocita media, velocita massima, match rate, fermate, svolte, cambi strada, superamenti limite, alert e latenze.
-
-Ogni run salva anche file di debug:
-
-- `reports/drive-soak/*.jsonl`: eventi uno per riga, inclusi campioni GPS, strada, limite, alert, confidence e latenza.
-- `reports/drive-soak/*.summary.json`: riepilogo finale con breakdown per strada, limite, alert e unmatched.
-- `reports/drive-soak/*.geojson`: LineString percorso + punti campione con contesto strada.
-- `reports/drive-soak/*.gpx`: traccia GPX apribile in strumenti GIS/navigazione.
-
-Per cambiare directory:
-
-```bash
-DRIVE_SOAK_REPORT_DIR=/tmp/drive-report npm run test:drive:real
-```
-
-Per ottenere il vecchio formato JSON machine-readable:
-
-```bash
-DRIVE_SOAK_OUTPUT=json npm run test:drive:real
-```
-
-Per smoke test finito:
-
-```bash
-DRIVE_SOAK_MAX_ITERATIONS=100 \
-DRIVE_SOAK_DELAY_MS=0 \
-DRIVE_SOAK_MIN_MATCH_RATE=0.7 \
-npm run test:drive:real
-```
-
-Per non partire sempre dalla stessa strada, lascia attivo il jitter di partenza o cambiane il raggio:
-
-```bash
-DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
-VALHALLA_BASE_URL=http://127.0.0.1:8002 \
-DRIVE_SOAK_DELAY_MS=0 \
-DRIVE_SOAK_START_JITTER_METERS=1000 \
-DRIVE_SOAK_MAX_ITERATIONS=300 \
-npm run test:drive:real
-```
-
-`DRIVE_SOAK_START_JITTER_METERS` sposta la partenza entro quel raggio e poi il warm-up cerca una strada agganciabile. Con `DRIVE_SOAK_SEED` fisso il punto resta deterministico; senza seed cambia a ogni run.
-
-Se il backend reale è già avviato:
-
-```bash
-DRIVE_SOAK_REAL=true \
-DRIVE_SOAK_BASE_URL=http://127.0.0.1:3000 \
-npm run test:drive
-```
-
-Coordinate configurabili:
-
-- `DRIVE_SOAK_START_LAT`
-- `DRIVE_SOAK_START_LON`
-- `DRIVE_SOAK_START_JITTER_METERS`
-- `DRIVE_SOAK_ROUTE_TARGET_METERS`
-- `DRIVE_SOAK_MIN_LAT`
-- `DRIVE_SOAK_MAX_LAT`
-- `DRIVE_SOAK_MIN_LON`
-- `DRIVE_SOAK_MAX_LON`
-
-Queste coordinate devono cadere dentro le tile Valhalla preparate.
 
 Per Raspberry Pi è consigliato costruire le tile su una macchina più potente e trasferire `VALHALLA_TILE_DIR` sul Raspberry, evitando build pesanti direttamente sul dispositivo.
 

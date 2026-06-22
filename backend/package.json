@@ -11,8 +11,6 @@
     "start": "node dist/src/server.js",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:drive": "ROAD_CONTEXT_PROVIDER=valhalla DRIVE_SOAK_REAL=true tsx scripts/drive-soak.ts",
-    "test:drive:real": "ROAD_CONTEXT_PROVIDER=valhalla DRIVE_SOAK_REAL=true tsx scripts/drive-soak.ts",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
