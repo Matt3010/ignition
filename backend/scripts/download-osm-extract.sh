@@ -3,6 +3,7 @@ set -euo pipefail
 
 OSM_REGIONS="${OSM_REGIONS:-italy}"
 OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
+OSM_DOWNLOAD_MIN_BYTES="${OSM_DOWNLOAD_MIN_BYTES:-1048576}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
@@ -56,14 +57,44 @@ for region in "${regions[@]}"; do
   target="$OSM_DATA_DIR/$region.osm.pbf"
   tmp_target="$OSM_DATA_DIR/$region.download.osm.pbf"
   alerts_target="$OSM_DATA_DIR/$region.alerts.osm"
-  trap 'rm -f "$tmp_target"' EXIT
   echo "Downloading OSM extract for $region from $url"
-  curl -L --fail --retry 3 --retry-delay 2 --retry-all-errors --output "$tmp_target" "$url"
+  if [[ -f "$tmp_target" ]]; then
+    partial_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
+    echo "Resuming partial download for $region from $partial_bytes bytes"
+  fi
+
+  # Geofabrik latest URLs may redirect. Keep the partial file on network or
+  # process interruption so a later run can continue instead of restarting.
+  curl \
+    --fail \
+    --location \
+    --retry 5 \
+    --retry-delay 5 \
+    --retry-all-errors \
+    --continue-at - \
+    --output "$tmp_target" \
+    "$url"
+
+  downloaded_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
+  if (( downloaded_bytes < OSM_DOWNLOAD_MIN_BYTES )); then
+    echo "Downloaded OSM extract for $region is unexpectedly small: ${downloaded_bytes} bytes" >&2
+    rm -f "$tmp_target"
+    exit 65
+  fi
+
   if command -v osmium >/dev/null 2>&1; then
-    osmium fileinfo "$tmp_target" >/dev/null
+    if ! osmium fileinfo "$tmp_target" >/dev/null; then
+      echo "Downloaded OSM extract for $region is not a valid OSM file" >&2
+      rm -f "$tmp_target"
+      exit 65
+    fi
   else
-    docker run --rm -v "$OSM_DATA_DIR_ABS:/data" "${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}" \
-      osmium fileinfo "/data/$region.download.osm.pbf" >/dev/null
+    if ! docker run --rm -v "$OSM_DATA_DIR_ABS:/data" "${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}" \
+      osmium fileinfo "/data/$region.download.osm.pbf" >/dev/null; then
+      echo "Downloaded OSM extract for $region is not a valid OSM file" >&2
+      rm -f "$tmp_target"
+      exit 65
+    fi
   fi
   mv "$tmp_target" "$target"
   if command -v osmium >/dev/null 2>&1; then
@@ -73,5 +104,4 @@ for region in "${regions[@]}"; do
       osmium tags-filter "/data/$region.osm.pbf" "${filters[@]}" --overwrite --output "/data/$region.alerts.osm"
   fi
   echo "Prepared $region"
-  trap - EXIT
 done
