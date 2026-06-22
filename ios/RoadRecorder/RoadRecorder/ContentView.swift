@@ -241,7 +241,7 @@ private struct EventAlertLine: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Label("\(alert.type): \(Int(alert.distanceMeters.rounded())) m", systemImage: "camera.fill")
+            Label("\(DriveEventFormatter.alertTypeText(alert.type)): \(Int(alert.distanceMeters.rounded())) m", systemImage: "camera.fill")
                 .foregroundStyle(.orange)
             Text("id: \(alert.id)")
             Text("limite alert: \(alert.speedLimitKmh.map { "\($0) km/h" } ?? "n/d") (\(DriveEventFormatter.speedLimitSourceText(alert.speedLimitSource))), direzione: \(alert.direction), confidenza: \(percent(alert.confidence))")
@@ -260,6 +260,22 @@ private struct EventAlertLine: View {
             if let presence = alert.osmPresenceStatus {
                 Text("presenza OSM: \(presence == "missingFromLatestImport" ? "mancante dall’ultimo import" : "presente")")
                     .foregroundStyle(presence == "missingFromLatestImport" ? Color.orange : Color.secondary)
+            }
+            if alert.active == false {
+                Text("record backend: inattivo ma mantenuto").foregroundStyle(.orange)
+            }
+            if alert.positionApproximate == true {
+                Text("posizione OSM: approssimativa").foregroundStyle(.orange)
+            }
+            if let osmId = alert.osmId {
+                let identity = [alert.osmType, osmId].compactMap { $0 }.joined(separator: "/")
+                Text("elemento OSM: \(identity)").foregroundStyle(.secondary)
+            }
+            if let relationId = alert.osmRelationId {
+                Text("relazione OSM: \(relationId)").foregroundStyle(.secondary)
+            }
+            if let osmTimestamp = alert.osmTimestamp {
+                Text("aggiornamento OSM: \(osmTimestamp)").foregroundStyle(.secondary)
             }
             Text(String(format: "posizione alert: %.5f, %.5f", alert.latitude, alert.longitude))
         }

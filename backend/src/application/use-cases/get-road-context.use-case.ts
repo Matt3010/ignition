@@ -1,33 +1,24 @@
 import type { AppConfig } from "../../config/env.js";
 import type { RoadContextResponse, GpsSample } from "../../domain/models/road-context.js";
 import { filterRelevantAlerts } from "../../domain/services/alert-filter.js";
-import { TtlCache } from "../../domain/services/cache.js";
 import { roundMeters } from "../../domain/services/geo.js";
 import type { AlertRepository } from "../ports/alert-repository.js";
 import type { RoadContextProvider } from "../ports/road-context-provider.js";
 import type { SessionTraceStore } from "../../domain/services/session-trace.js";
 
 export class GetRoadContextUseCase {
-  private readonly roadContextCache: TtlCache<string, RoadContextResponse>;
-  private readonly alertCache: TtlCache<string, Awaited<ReturnType<AlertRepository["findNearby"]>>>;
-
   constructor(
     private readonly provider: RoadContextProvider,
     private readonly alertRepository: AlertRepository,
     private readonly traceStore: SessionTraceStore,
     private readonly config: AppConfig,
-  ) {
-    const ttlMs = config.CACHE_TTL_SECONDS * 1000;
-    this.roadContextCache = new TtlCache(ttlMs);
-    this.alertCache = new TtlCache(ttlMs);
-  }
+  ) {}
 
   async execute(sample: GpsSample, scenario?: string | null): Promise<RoadContextResponse> {
-    const cacheKey = `${sample.sessionId}:${sample.latitude.toFixed(5)}:${sample.longitude.toFixed(5)}:${sample.timestamp}:${scenario ?? ""}`;
-    const cached = this.roadContextCache.get(cacheKey);
-    if (cached) return cached;
-
     const trace = this.traceStore.add(sample);
+    const previousPosition = trace.length >= 2
+      ? { latitude: trace[trace.length - 2].latitude, longitude: trace[trace.length - 2].longitude }
+      : null;
     const previousState = this.traceStore.getState(sample.sessionId);
     const match = await this.provider.match({ sample, trace, previousState, scenario });
 
@@ -40,32 +31,26 @@ export class GetRoadContextUseCase {
       });
     }
 
-    const alertCacheKey = `${sample.latitude.toFixed(3)}:${sample.longitude.toFixed(3)}:${this.config.ALERT_SEARCH_RADIUS_METERS}`;
-    let nearby = this.alertCache.get(alertCacheKey);
-    if (!nearby) {
-      nearby = await this.alertRepository.findNearby({
-        latitude: sample.latitude,
-        longitude: sample.longitude,
-        radiusMeters: this.config.ALERT_SEARCH_RADIUS_METERS,
-        now: new Date(sample.timestamp),
-      });
-      this.alertCache.set(alertCacheKey, nearby);
-    }
+    const nearby = await this.alertRepository.findNearby({
+      latitude: sample.latitude,
+      longitude: sample.longitude,
+      radiusMeters: this.config.ALERT_SEARCH_RADIUS_METERS,
+    });
 
     const alerts = filterRelevantAlerts({
       alerts: nearby,
-      roadId: match.roadId,
       userCourse: sample.course,
-      direction: match.direction,
-      directionToleranceDegrees: this.config.ALERT_DIRECTION_TOLERANCE_DEGREES,
-      unassignedMaxDistanceMeters: this.config.ALERT_UNASSIGNED_RADIUS_METERS,
-      unmatchedMaxDistanceMeters: this.config.ALERT_UNMATCHED_RADIUS_METERS,
+      matchedRoadBearing: match.bearing,
       userLatitude: sample.latitude,
       userLongitude: sample.longitude,
-      aheadToleranceDegrees: this.config.ALERT_AHEAD_TOLERANCE_DEGREES,
-      minConfidence: this.config.ALERT_MIN_CONFIDENCE,
-      now: new Date(sample.timestamp),
-      limit: this.config.ALERT_RESULT_LIMIT,
+      userSpeedKmh: sample.speedKmh,
+      horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+      previousPosition,
+      behindMinAngleDegrees: this.config.ALERT_BEHIND_MIN_ANGLE_DEGREES,
+      behindImmediateAngleDegrees: this.config.ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES,
+      behindMinSpeedKmh: this.config.ALERT_BEHIND_MIN_SPEED_KMH,
+      behindMaxGpsAccuracyMeters: this.config.ALERT_BEHIND_MAX_GPS_ACCURACY_METERS,
+      behindMinDistanceIncreaseMeters: this.config.ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS,
     }).map((alert) => ({
       id: alert.id,
       type: alert.type,
@@ -80,9 +65,15 @@ export class GetRoadContextUseCase {
       statusReason: alert.statusReason ?? alert.fixme ?? null,
       directionBearings: alert.directionBearings ?? [],
       osmPresenceStatus: alert.osmPresenceStatus ?? "present",
+      active: alert.active,
+      positionApproximate: alert.positionApproximate ?? false,
+      osmType: alert.osmType ?? null,
+      osmId: alert.osmId ?? null,
+      osmRelationId: alert.osmRelationId ?? null,
+      osmTimestamp: alert.osmTimestamp?.toISOString() ?? null,
     }));
 
-    const response: RoadContextResponse = {
+    return {
       matched: match.matched,
       roadId: match.roadId,
       roadName: match.roadName,
@@ -94,7 +85,5 @@ export class GetRoadContextUseCase {
       dataTimestamp: match.dataTimestamp,
       alerts,
     };
-    this.roadContextCache.set(cacheKey, response);
-    return response;
   }
 }

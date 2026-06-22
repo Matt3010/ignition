@@ -1,40 +1,51 @@
-import type { AlertCandidate, Direction } from "../models/alert.js";
-import { angularDifference, initialBearing } from "./geo.js";
+import type { AlertCandidate } from "../models/alert.js";
+import { angularDifference, haversineMeters, initialBearing } from "./geo.js";
 
 export interface AlertFilterInput {
   alerts: AlertCandidate[];
-  roadId: string | null;
   userCourse: number | null;
-  direction: Direction;
-  directionToleranceDegrees: number;
-  unassignedMaxDistanceMeters: number;
-  unmatchedMaxDistanceMeters: number;
-  userLatitude?: number;
-  userLongitude?: number;
-  aheadToleranceDegrees?: number;
-  minConfidence?: number;
-  now: Date;
-  limit: number;
+  matchedRoadBearing: number | null;
+  userLatitude: number;
+  userLongitude: number;
+  userSpeedKmh: number;
+  horizontalAccuracyMeters: number;
+  previousPosition: { latitude: number; longitude: number } | null;
+  behindMinAngleDegrees: number;
+  behindImmediateAngleDegrees: number;
+  behindMinSpeedKmh: number;
+  behindMaxGpsAccuracyMeters: number;
+  behindMinDistanceIncreaseMeters: number;
 }
 
 export function filterRelevantAlerts(input: AlertFilterInput): AlertCandidate[] {
+  const travelBearing = input.matchedRoadBearing ?? input.userCourse;
   return input.alerts
     .filter((alert) => {
-      // Deliberately the only destructive filter: suppress alerts behind the vehicle.
-      // Unknown course means we cannot prove the alert is behind, so it is retained.
       if (
-        input.userCourse === null ||
-        input.userLatitude === undefined ||
-        input.userLongitude === undefined
+        travelBearing === null ||
+        input.userSpeedKmh < input.behindMinSpeedKmh ||
+        input.horizontalAccuracyMeters > input.behindMaxGpsAccuracyMeters
       ) return true;
-      const bearingToAlert = initialBearing(
+
+      const bearingToAlert = initialBearing(input.userLatitude, input.userLongitude, alert.latitude, alert.longitude);
+      const difference = angularDifference(travelBearing, bearingToAlert);
+      if (difference === null || difference < input.behindMinAngleDegrees) return true;
+      if (difference >= input.behindImmediateAngleDegrees && alert.roadId === null) return false;
+      if (!input.previousPosition) return true;
+
+      const previousDistance = haversineMeters(
+        input.previousPosition.latitude,
+        input.previousPosition.longitude,
+        alert.latitude,
+        alert.longitude,
+      );
+      const currentDistance = haversineMeters(
         input.userLatitude,
         input.userLongitude,
         alert.latitude,
         alert.longitude,
       );
-      const difference = angularDifference(input.userCourse, bearingToAlert);
-      return difference === null || difference <= (input.aheadToleranceDegrees ?? 90);
+      return currentDistance < previousDistance + input.behindMinDistanceIncreaseMeters;
     })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }

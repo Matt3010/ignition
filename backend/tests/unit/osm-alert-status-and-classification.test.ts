@@ -35,3 +35,28 @@ describe("OSM alert status and classification", () => {
     expect(alerts[2].direction).toBe("unknown");
   });
 });
+
+describe("additional OSM enforcement coverage", () => {
+  it("keeps access, weight and generic enforcement types", () => {
+    const xml = `<osm version="0.6">
+      <node id="1" lat="45" lon="11"><tag k="enforcement" v="access"/></node>
+      <node id="2" lat="45.001" lon="11.001"><tag k="enforcement" v="maxweight"/></node>
+      <node id="3" lat="45.002" lon="11.002"><tag k="enforcement" v="check"/></node>
+    </osm>`;
+    expect(parseOsmAlerts(xml).alerts.map((alert) => alert.type)).toEqual([
+      "accessControl", "weightControl", "genericEnforcement",
+    ]);
+  });
+
+  it("preserves OSM metadata and rejects unrelated building construction", () => {
+    const xml = `<osm version="0.6">
+      <node id="1" lat="45" lon="11" version="7" timestamp="2026-06-20T10:00:00Z" changeset="123" user="mapper" uid="456">
+        <tag k="highway" v="speed_camera"/><tag k="description" v="verificare la giusta posizione"/>
+      </node>
+      <node id="2" lat="45.1" lon="11.1"><tag k="building" v="construction"/><tag k="construction" v="house"/></node>
+    </osm>`;
+    const alerts = parseOsmAlerts(xml).alerts;
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ osmVersion: 7, osmChangeset: "123", osmUser: "mapper", osmUid: "456", positionApproximate: true });
+  });
+});

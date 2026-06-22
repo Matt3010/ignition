@@ -127,8 +127,12 @@ npm run import:osm-alerts -- --file data/osm/italy.alerts.osm
 
 Il parser OSM importa solo dati statici realmente presenti:
 
-- `highway=speed_camera` o relation `enforcement=maxspeed` -> `fixedSpeedCamera`
-- `highway=construction` o `construction=*` -> `roadWorks`
+- `highway=speed_camera`, `enforcement=maxspeed` e `enforcement=average_speed` -> `fixedSpeedCamera`
+- `enforcement=traffic_signals` -> `redLightCamera`
+- `enforcement=access` -> `accessControl`
+- `enforcement=maxweight` -> `weightControl`
+- altri `enforcement=*` -> `genericEnforcement`
+- `highway=construction`, `highway=roadworks` o `roadworks=yes` -> `roadWorks`
 - `hazard=*` -> `roadHazard`
 
 Converte `maxspeed`, anche `mph`, fa upsert e registra l'import in `data_imports` con `bbox`, `file_path` e `deactivated_count`. Non inventa alert: se OSM non contiene autovelox/lavori/pericoli nell'estratto, l'import produce 0 record.
@@ -307,7 +311,7 @@ Queste coordinate devono cadere dentro le tile Valhalla preparate.
 
 Per Raspberry Pi è consigliato costruire le tile su una macchina più potente e trasferire `VALHALLA_TILE_DIR` sul Raspberry, evitando build pesanti direttamente sul dispositivo.
 
-Aggiornamenti periodici: configurare `OSM_UPDATE_CRON`, scaricare nuovo estratto, ricostruire tile offline, poi sostituire il volume Valhalla durante una finestra controllata.
+Aggiornamenti periodici: configurare `OSM_REFRESH_INTERVAL_SECONDS`; il refresh usa staging e rollback automatico.
 
 ## Confidence
 
@@ -399,11 +403,12 @@ Vedere `.env.example`. Le più importanti:
 - `VALHALLA_BASE_URL`
 - `VALHALLA_TIMEOUT_MS`
 - `ALERT_SEARCH_RADIUS_METERS`
-- `ALERT_DIRECTION_TOLERANCE_DEGREES`
-- `ALERT_UNASSIGNED_RADIUS_METERS`
-- `ALERT_UNMATCHED_RADIUS_METERS`
+- `ALERT_BEHIND_MIN_ANGLE_DEGREES`
+- `ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES`
+- `ALERT_BEHIND_MIN_SPEED_KMH`
+- `ALERT_BEHIND_MAX_GPS_ACCURACY_METERS`
+- `ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS`
 - `SESSION_TRACE_TTL_SECONDS`
-- `CACHE_TTL_SECONDS`
 - `MAX_GPS_ACCURACY_METERS`
 - `OSM_EXTRACT_PRESET`
 - `OSM_EXTRACT_URL`

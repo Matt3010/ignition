@@ -87,7 +87,11 @@ describe("mock test drive", () => {
     expect(body.roadName).toBe("Complanare mock");
     expect(body.alerts.map((alert) => alert.id)).toEqual([
       "parallel-250",
+      "camera-opposite",
+      "camera-200",
       "works-350",
+      "expired-100",
+      "inactive-100",
       "camera-500",
       "hazard-650",
       "camera-1000",

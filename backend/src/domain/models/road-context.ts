@@ -57,6 +57,12 @@ export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceM
     statusReason: string | null;
     directionBearings: number[];
     osmPresenceStatus: OsmPresenceStatus;
+    active: boolean;
+    positionApproximate: boolean;
+    osmType: string | null;
+    osmId: string | null;
+    osmRelationId: string | null;
+    osmTimestamp: string | null;
   }>;
 }
 

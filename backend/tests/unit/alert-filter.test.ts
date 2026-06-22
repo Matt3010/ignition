@@ -2,187 +2,41 @@ import type { AlertCandidate } from "../../src/domain/models/alert.js";
 import { filterRelevantAlerts } from "../../src/domain/services/alert-filter.js";
 
 const base: AlertCandidate = {
-  id: "a",
-  type: "fixedSpeedCamera",
-  latitude: 45,
-  longitude: 11,
-  speedLimitKmh: 70,
-  speedLimitSource: "explicit",
-  direction: "forward",
-  bearing: 0,
-  roadId: "way-1",
-  confidence: 0.9,
-  active: true,
-  validFrom: null,
-  validUntil: null,
-  source: "test",
-  distanceMeters: 100,
+  id: "a", type: "fixedSpeedCamera", latitude: 45.001, longitude: 11,
+  speedLimitKmh: 70, speedLimitSource: "explicit", direction: "forward", bearing: 0,
+  roadId: "way-1", confidence: 0.9, active: true, validFrom: null, validUntil: null,
+  source: "test", distanceMeters: 100,
 };
 
+function filter(alerts: AlertCandidate[], overrides: Partial<Parameters<typeof filterRelevantAlerts>[0]> = {}) {
+  return filterRelevantAlerts({
+    alerts, userCourse: 0, matchedRoadBearing: null, userLatitude: 45, userLongitude: 11,
+    userSpeedKmh: 50, horizontalAccuracyMeters: 5, previousPosition: null,
+    behindMinAngleDegrees: 135, behindImmediateAngleDegrees: 170, behindMinSpeedKmh: 5,
+    behindMaxGpsAccuracyMeters: 25, behindMinDistanceIncreaseMeters: 5, ...overrides,
+  });
+}
+
 describe("alert filtering", () => {
-  it("keeps alerts on other roads and directions when they are not behind", () => {
-    const alerts = filterRelevantAlerts({
-      alerts: [
-        { ...base, bearing: null },
-        { ...base, id: "opposite-road", roadId: "way-2" },
-        { ...base, id: "opposite-dir", direction: "backward", bearing: null },
-      ],
-      roadId: "way-1",
-      userCourse: 0,
-      direction: "forward",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date("2026-01-01T00:00:00Z"),
-      limit: 10,
-    });
-    expect(alerts.map((alert) => alert.id)).toEqual(["a", "opposite-road", "opposite-dir"]);
+  it("keeps all nearby alerts regardless of status, confidence, road, or validity", () => {
+    expect(filter([base, { ...base, id: "inactive", active: false }, { ...base, id: "low", confidence: 0.1 }])).toHaveLength(3);
   });
-
-  it("keeps bearing-compatible camera alerts even when way direction differs", () => {
-    const alerts = filterRelevantAlerts({
-      alerts: [{ ...base, direction: "forward", bearing: 0 }],
-      roadId: "way-1",
-      userCourse: 0,
-      direction: "backward",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date("2026-01-01T00:00:00Z"),
-      limit: 10,
-    });
-    expect(alerts.map((alert) => alert.id)).toEqual(["a"]);
+  it("suppresses an unassigned alert almost exactly behind", () => {
+    expect(filter([{ ...base, id: "ahead", latitude: 45.001, roadId: null }, { ...base, id: "behind", latitude: 44.999, roadId: null }]).map(a => a.id)).toEqual(["ahead"]);
   });
-
-  it("keeps expired and inactive alerts in lossless mode", () => {
-    const alerts = filterRelevantAlerts({
-      alerts: [
-        base,
-        { ...base, id: "expired", validUntil: new Date("2020-01-01T00:00:00Z") },
-        { ...base, id: "inactive", active: false },
-      ],
-      roadId: "way-1",
-      userCourse: 0,
-      direction: "forward",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date("2026-01-01T00:00:00Z"),
-      limit: 10,
-    });
-    expect(alerts.map((alert) => alert.id)).toEqual(["a", "expired", "inactive"]);
+  it("keeps a same-road rear alert until movement away proves it was passed", () => {
+    expect(filter([{ ...base, latitude: 44.999, roadId: "way-1" }])).toHaveLength(1);
   });
-
-  it("does not mutate confidence when direction bearing is unknown", () => {
-    const [alert] = filterRelevantAlerts({
-      alerts: [{ ...base, bearing: null, direction: "unknown", confidence: 0.95 }],
-      roadId: "way-1",
-      userCourse: 0,
-      direction: "forward",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date("2026-01-01T00:00:00Z"),
-      limit: 10,
-    });
-    expect(alert.confidence).toBe(0.95);
+  it("suppresses a rear alert when moving away", () => {
+    expect(filter([{ ...base, latitude: 44.999 }], { previousPosition: { latitude: 44.9995, longitude: 11 } })).toHaveLength(0);
   });
-
-  it("keeps all nearby alerts regardless of road assignment", () => {
-    const alerts = filterRelevantAlerts({
-      alerts: [
-        { ...base, id: "close-unassigned", roadId: null, distanceMeters: 250 },
-        { ...base, id: "far-unassigned", roadId: null, distanceMeters: 900 },
-        { ...base, id: "same-road", roadId: "way-1", distanceMeters: 1200 },
-      ],
-      roadId: "way-1",
-      userCourse: 0,
-      direction: "forward",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date("2026-01-01T00:00:00Z"),
-      limit: 10,
-    });
-    expect(alerts.map((alert) => alert.id)).toEqual(["close-unassigned", "far-unassigned", "same-road"]);
+  it("keeps rear alerts with low speed or poor GPS", () => {
+    const alert = { ...base, latitude: 44.999, roadId: null };
+    expect(filter([alert], { userSpeedKmh: 2 })).toHaveLength(1);
+    expect(filter([alert], { horizontalAccuracyMeters: 40 })).toHaveLength(1);
   });
-
-  it("keeps all nearby alerts while the road is unmatched", () => {
-    const alerts = filterRelevantAlerts({
-      alerts: [
-        { ...base, id: "close", roadId: null, distanceMeters: 220 },
-        { ...base, id: "far", roadId: null, distanceMeters: 450 },
-        { ...base, id: "same-road-but-unmatched", roadId: "way-1", distanceMeters: 600 },
-      ],
-      roadId: null,
-      userCourse: 0,
-      direction: "unknown",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date("2026-01-01T00:00:00Z"),
-      limit: 10,
-    });
-    expect(alerts.map((alert) => alert.id)).toEqual(["close", "far", "same-road-but-unmatched"]);
+  it("does not truncate large result sets", () => {
+    const alerts = Array.from({ length: 300 }, (_, index) => ({ ...base, id: `a-${index}`, distanceMeters: index }));
+    expect(filter(alerts, { userCourse: null })).toHaveLength(300);
   });
 });
-
-it("removes alerts that are behind the vehicle", () => {
-  const alerts = filterRelevantAlerts({
-    alerts: [
-      { ...base, id: "ahead", latitude: 45.001, longitude: 11, roadId: null },
-      { ...base, id: "behind", latitude: 44.999, longitude: 11, roadId: null },
-    ],
-    roadId: "way-1",
-    userCourse: 0,
-    userLatitude: 45,
-    userLongitude: 11,
-    aheadToleranceDegrees: 80,
-    minConfidence: 0.6,
-    direction: "forward",
-    directionToleranceDegrees: 45,
-    unassignedMaxDistanceMeters: 500,
-    unmatchedMaxDistanceMeters: 300,
-    now: new Date("2026-01-01T00:00:00Z"),
-    limit: 10,
-  });
-  expect(alerts.map((alert) => alert.id)).toEqual(["ahead"]);
-});
-
-it("keeps non-operational OSM cameras visible even below the confidence threshold", () => {
-    const alerts = filterRelevantAlerts({
-      alerts: [{ ...base, confidence: 0.2, operationalStatus: "notOperational", statusReason: "no trace" }],
-      roadId: null,
-      userCourse: null,
-      direction: "unknown",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      minConfidence: 0.6,
-      now: new Date(),
-      limit: 10,
-    });
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0].operationalStatus).toBe("notOperational");
-  });
-
-  it("does not truncate alerts by result limit", () => {
-    const alerts = Array.from({ length: 300 }, (_, index) => ({
-      ...base,
-      id: `alert-${index}`,
-      latitude: 45.001 + index * 0.000001,
-      distanceMeters: index + 1,
-    }));
-    const result = filterRelevantAlerts({
-      alerts,
-      roadId: null,
-      userCourse: null,
-      direction: "unknown",
-      directionToleranceDegrees: 45,
-      unassignedMaxDistanceMeters: 500,
-      unmatchedMaxDistanceMeters: 300,
-      now: new Date(),
-      limit: 10,
-    });
-    expect(result).toHaveLength(300);
-  });

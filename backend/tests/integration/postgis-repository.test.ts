@@ -13,11 +13,10 @@ describe("PostGIS alert repository", () => {
       latitude: 45,
       longitude: 11,
       radiusMeters: 1000,
-      now: new Date("2026-01-01T00:00:00Z"),
     });
     expect(calls[0].sql).toContain("ST_DWithin");
     expect(calls[0].sql).toContain("ST_DistanceSphere");
-    expect(calls[0].values).toEqual([11, 45, 1000, new Date("2026-01-01T00:00:00Z")]);
+    expect(calls[0].values).toEqual([11, 45, 1000]);
   });
 
   it("deactivates stale source alerts inside a bbox", async () => {

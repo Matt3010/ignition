@@ -67,6 +67,12 @@ struct RoadAlert: Codable {
     let statusReason: String?
     let directionBearings: [Double]?
     let osmPresenceStatus: String?
+    let active: Bool?
+    let positionApproximate: Bool?
+    let osmType: String?
+    let osmId: String?
+    let osmRelationId: String?
+    let osmTimestamp: String?
 }
 
 struct RecorderEvent: Identifiable, Codable {
@@ -178,7 +184,7 @@ enum DriveEventFormatter {
             } ?? ""
             let operationalStatus = alert.operationalStatus.map { ", stato \(operationalStatusText($0))" } ?? ""
             let statusReason = alert.statusReason.map { ", motivo: \($0)" } ?? ""
-            return "alert \(alert.type) a \(Int(alert.distanceMeters.rounded())) m\(limit)\(operationalStatus)\(statusReason)"
+            return "alert \(alertTypeText(alert.type)) a \(Int(alert.distanceMeters.rounded())) m\(limit)\(operationalStatus)\(statusReason)"
         } ?? "nessun alert vicino"
 
         return "\(speed), \(roadLabel), \(limitLabel), \(speedStatus), \(nearestAlert)"
@@ -200,6 +206,24 @@ enum DriveEventFormatter {
         return "velocita ok"
     }
 
+
+    static func alertTypeText(_ type: String) -> String {
+        switch type {
+        case "fixedSpeedCamera": return "autovelox fisso"
+        case "mobileSpeedCamera": return "autovelox mobile"
+        case "redLightCamera": return "photored"
+        case "accessControl": return "controllo accesso/ZTL"
+        case "weightControl": return "controllo peso"
+        case "genericEnforcement": return "controllo stradale"
+        case "policeControl": return "controllo di polizia"
+        case "accident": return "incidente"
+        case "roadHazard": return "pericolo stradale"
+        case "roadWorks": return "lavori stradali"
+        case "roadClosure": return "strada chiusa"
+        case "information": return "informazione"
+        default: return type
+        }
+    }
 
     static func operationalStatusText(_ status: String) -> String {
         switch status {

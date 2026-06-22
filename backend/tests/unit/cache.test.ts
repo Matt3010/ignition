@@ -14,3 +14,10 @@ describe("TTL cache", () => {
     expect(cache.get("a")).toBeNull();
   });
 });
+
+it("bounds retained entries", () => {
+  const cache = new TtlCache<string, number>(1000, 2);
+  cache.set("a", 1); cache.set("b", 2); cache.set("c", 3);
+  expect(cache.size).toBe(2);
+  expect(cache.get("a")).toBeNull();
+});

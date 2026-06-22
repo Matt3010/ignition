@@ -1,54 +1,33 @@
 import type pg from "pg";
 import type { AlertCandidate, RoadAlert } from "../../domain/models/alert.js";
 import type { AlertRepository } from "../../application/ports/alert-repository.js";
+import type { OsmBounds } from "../osm/osm-alert-parser.js";
+
+type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
 
 export class PostgisAlertRepository implements AlertRepository {
   constructor(private readonly pool: pg.Pool) {}
 
-  async findNearby(input: {
-    latitude: number;
-    longitude: number;
-    radiusMeters: number;
-    now: Date;
-  }): Promise<AlertCandidate[]> {
+  async findNearby(input: { latitude: number; longitude: number; radiusMeters: number }): Promise<AlertCandidate[]> {
     const result = await this.pool.query(
       `
       select
-        id::text,
-        type,
-        latitude,
-        longitude,
-        speed_limit_kmh,
-        speed_limit_source,
-        direction,
-        bearing,
-        road_id,
-        confidence,
-        active,
-        valid_from,
-        valid_until,
-        source,
-        osm_type,
-        osm_id,
-        osm_relation_id,
-        source_tags,
-        fixme,
-        position_approximate,
-        operational_status,
-        status_reason,
-        direction_bearings,
-        osm_presence_status,
-        original_osm_ids,
+        id::text, type, latitude, longitude, speed_limit_kmh, speed_limit_source,
+        direction, bearing, road_id, confidence, active, valid_from, valid_until,
+        source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
+        osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
+        operational_status, status_reason, direction_bearings, osm_presence_status,
+        original_osm_ids, created_at, updated_at,
         ST_DistanceSphere(geometry, ST_SetSRID(ST_MakePoint($1, $2), 4326)) as distance_meters
       from road_alerts
       where ST_DWithin(
-          geometry::geography,
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          $3
-        )
+        geometry::geography,
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+        $3
+      )
       order by distance_meters asc
       `,
-      [input.longitude, input.latitude, input.radiusMeters, input.now],
+      [input.longitude, input.latitude, input.radiusMeters],
     );
     return result.rows.map((row) => ({
       id: row.id,
@@ -68,6 +47,11 @@ export class PostgisAlertRepository implements AlertRepository {
       osmType: row.osm_type,
       osmId: row.osm_id,
       osmRelationId: row.osm_relation_id,
+      osmVersion: row.osm_version === null ? null : Number(row.osm_version),
+      osmTimestamp: row.osm_timestamp ? new Date(row.osm_timestamp) : null,
+      osmChangeset: row.osm_changeset,
+      osmUser: row.osm_user,
+      osmUid: row.osm_uid,
       sourceTags: row.source_tags,
       fixme: row.fixme,
       positionApproximate: row.position_approximate,
@@ -76,6 +60,8 @@ export class PostgisAlertRepository implements AlertRepository {
       directionBearings: row.direction_bearings ?? [],
       osmPresenceStatus: row.osm_presence_status ?? "present",
       originalOsmIds: row.original_osm_ids ?? [],
+      createdAt: row.created_at ? new Date(row.created_at) : undefined,
+      updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
       distanceMeters: Number(row.distance_meters),
     }));
   }
@@ -85,76 +71,9 @@ export class PostgisAlertRepository implements AlertRepository {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      for (const alert of alerts) {
-        await client.query(
-          `
-          insert into road_alerts (
-            id, type, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source, direction, bearing,
-            road_id, confidence, active, valid_from, valid_until, source, osm_type, osm_id, osm_relation_id, source_tags, fixme, position_approximate, operational_status, status_reason, direction_bearings, osm_presence_status, original_osm_ids, created_at, updated_at
-          )
-          values (
-            $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326), $5, $6, $7, $8,
-            $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23::double precision[], $24, $25::text[], now(), now()
-          )
-          on conflict (id) do update set
-            type = excluded.type,
-            latitude = excluded.latitude,
-            longitude = excluded.longitude,
-            geometry = excluded.geometry,
-            speed_limit_kmh = excluded.speed_limit_kmh,
-            speed_limit_source = excluded.speed_limit_source,
-            direction = excluded.direction,
-            bearing = excluded.bearing,
-            road_id = excluded.road_id,
-            confidence = excluded.confidence,
-            active = excluded.active,
-            valid_from = excluded.valid_from,
-            valid_until = excluded.valid_until,
-            source = excluded.source,
-            osm_type = excluded.osm_type,
-            osm_id = excluded.osm_id,
-            osm_relation_id = excluded.osm_relation_id,
-            source_tags = excluded.source_tags,
-            fixme = excluded.fixme,
-            position_approximate = excluded.position_approximate,
-            operational_status = excluded.operational_status,
-            status_reason = excluded.status_reason,
-            direction_bearings = excluded.direction_bearings,
-            osm_presence_status = excluded.osm_presence_status,
-            original_osm_ids = excluded.original_osm_ids,
-            updated_at = now()
-          `,
-          [
-            alert.id,
-            alert.type,
-            alert.latitude,
-            alert.longitude,
-            alert.speedLimitKmh,
-            alert.speedLimitSource,
-            alert.direction,
-            alert.bearing,
-            alert.roadId,
-            alert.confidence,
-            alert.active,
-            alert.validFrom,
-            alert.validUntil,
-            alert.source,
-            alert.osmType ?? null,
-            alert.osmId ?? null,
-            alert.osmRelationId ?? null,
-            JSON.stringify(alert.sourceTags ?? {}),
-            alert.fixme ?? null,
-            alert.positionApproximate ?? false,
-            alert.operationalStatus ?? "unknown",
-            alert.statusReason ?? alert.fixme ?? null,
-            alert.directionBearings ?? [],
-            alert.osmPresenceStatus ?? "present",
-            alert.originalOsmIds ?? [],
-          ],
-        );
-      }
+      const count = await this.upsertManyWith(client, alerts);
       await client.query("commit");
-      return alerts.length;
+      return count;
     } catch (error) {
       await client.query("rollback");
       throw error;
@@ -163,27 +82,127 @@ export class PostgisAlertRepository implements AlertRepository {
     }
   }
 
-  async deactivateMissingInBounds(input: {
+  async syncMany(input: {
+    alerts: RoadAlert[];
     source: string;
-    activeIds: string[];
-    bounds: {
-      minLatitude: number;
-      minLongitude: number;
-      maxLatitude: number;
-      maxLongitude: number;
-    };
-  }): Promise<number> {
-    const result = await this.pool.query(
+    bounds: OsmBounds | null;
+    deactivateMissing: boolean;
+  }): Promise<{ upserted: number; deactivated: number }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const upserted = await this.upsertManyWith(client, input.alerts);
+      const deactivated = input.deactivateMissing && input.bounds
+        ? await this.deactivateMissingInBoundsWith(client, {
+            source: input.source,
+            activeIds: input.alerts.map((alert) => alert.id),
+            bounds: input.bounds,
+          })
+        : 0;
+      await client.query("commit");
+      return { upserted, deactivated };
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async deactivateMissingInBounds(input: { source: string; activeIds: string[]; bounds: OsmBounds }): Promise<number> {
+    return this.deactivateMissingInBoundsWith(this.pool, input);
+  }
+
+  async health(): Promise<"up" | "down"> {
+    try {
+      await this.pool.query("select 1 from road_alerts limit 1");
+      return "up";
+    } catch {
+      return "down";
+    }
+  }
+
+  private async upsertManyWith(executor: QueryExecutor, alerts: RoadAlert[]): Promise<number> {
+    for (const alert of alerts) {
+      await executor.query(
+        `
+        insert into road_alerts (
+          id, type, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source,
+          direction, bearing, road_id, confidence, active, valid_from, valid_until,
+          source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
+          osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
+          operational_status, status_reason, direction_bearings, osm_presence_status,
+          original_osm_ids, created_at, updated_at
+        ) values (
+          $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326), $5, $6,
+          $7, $8, $9, $10, $11, $12, $13,
+          $14, $15, $16, $17, $18, $19,
+          $20, $21, $22, $23::jsonb, $24, $25,
+          $26, $27, $28::double precision[], $29,
+          $30::text[], now(), now()
+        )
+        on conflict (id) do update set
+          type = excluded.type,
+          latitude = excluded.latitude,
+          longitude = excluded.longitude,
+          geometry = excluded.geometry,
+          speed_limit_kmh = excluded.speed_limit_kmh,
+          speed_limit_source = excluded.speed_limit_source,
+          direction = excluded.direction,
+          bearing = excluded.bearing,
+          road_id = excluded.road_id,
+          confidence = excluded.confidence,
+          active = excluded.active,
+          valid_from = excluded.valid_from,
+          valid_until = excluded.valid_until,
+          source = excluded.source,
+          osm_type = excluded.osm_type,
+          osm_id = excluded.osm_id,
+          osm_relation_id = excluded.osm_relation_id,
+          osm_version = excluded.osm_version,
+          osm_timestamp = excluded.osm_timestamp,
+          osm_changeset = excluded.osm_changeset,
+          osm_user = excluded.osm_user,
+          osm_uid = excluded.osm_uid,
+          source_tags = excluded.source_tags,
+          fixme = excluded.fixme,
+          position_approximate = excluded.position_approximate,
+          operational_status = excluded.operational_status,
+          status_reason = excluded.status_reason,
+          direction_bearings = excluded.direction_bearings,
+          osm_presence_status = excluded.osm_presence_status,
+          original_osm_ids = excluded.original_osm_ids,
+          updated_at = now()
+        `,
+        [
+          alert.id, alert.type, alert.latitude, alert.longitude,
+          alert.speedLimitKmh, alert.speedLimitSource, alert.direction, alert.bearing,
+          alert.roadId, alert.confidence, alert.active, alert.validFrom, alert.validUntil,
+          alert.source, alert.osmType ?? null, alert.osmId ?? null, alert.osmRelationId ?? null,
+          alert.osmVersion ?? null, alert.osmTimestamp ?? null, alert.osmChangeset ?? null,
+          alert.osmUser ?? null, alert.osmUid ?? null, JSON.stringify(alert.sourceTags ?? {}),
+          alert.fixme ?? null, alert.positionApproximate ?? false,
+          alert.operationalStatus ?? "unknown", alert.statusReason ?? alert.fixme ?? null,
+          alert.directionBearings ?? [], alert.osmPresenceStatus ?? "present",
+          alert.originalOsmIds ?? [],
+        ],
+      );
+    }
+    return alerts.length;
+  }
+
+  private async deactivateMissingInBoundsWith(
+    executor: QueryExecutor,
+    input: { source: string; activeIds: string[]; bounds: OsmBounds },
+  ): Promise<number> {
+    const result = await executor.query(
       `
       update road_alerts
       set active = false, osm_presence_status = 'missingFromLatestImport', updated_at = now()
       where source = $1
         and active = true
-        and id <> all($2::uuid[])
-        and ST_Covers(
-          ST_MakeEnvelope($3, $4, $5, $6, 4326),
-          geometry
-        )
+        and not (id = any($2::uuid[]))
+        and ST_Covers(ST_MakeEnvelope($3, $4, $5, $6, 4326), geometry)
       `,
       [
         input.source,
@@ -195,14 +214,5 @@ export class PostgisAlertRepository implements AlertRepository {
       ],
     );
     return result.rowCount ?? 0;
-  }
-
-  async health(): Promise<"up" | "down"> {
-    try {
-      await this.pool.query("select 1 from road_alerts limit 1");
-      return "up";
-    } catch {
-      return "down";
-    }
   }
 }

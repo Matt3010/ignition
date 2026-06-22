@@ -37,24 +37,30 @@ curl -L --fail --output "$target.tmp" "$OSM_EXTRACT_URL"
 mv "$target.tmp" "$target"
 echo "Done"
 
-echo "Preparing alert subset: $alerts_target"
+echo "Preparing lossless alert subset: $alerts_target"
+filters=(
+  n/highway=speed_camera w/highway=speed_camera
+  n/speed_camera=yes w/speed_camera=yes
+  n/camera:type=speed w/camera:type=speed
+  n/enforcement w/enforcement r/enforcement
+  n/highway=construction w/highway=construction
+  n/construction w/construction
+  n/highway=roadworks w/highway=roadworks
+  n/roadworks=yes w/roadworks=yes
+  n/hazard w/hazard r/hazard
+  n/hazard:conditional w/hazard:conditional r/hazard:conditional
+  n/highway=hazard w/highway=hazard
+)
+
 if command -v osmium >/dev/null 2>&1; then
-  osmium tags-filter "$target" \
-    n/highway=speed_camera n/speed_camera=yes n/camera:type=speed \
-    r/enforcement=maxspeed \
-    w/highway=construction w/highway=roadworks w/construction w/roadworks=yes \
-    n/hazard w/hazard \
-    --overwrite --output "$alerts_target"
+  osmium tags-filter "$target" "${filters[@]}" --overwrite --output "$alerts_target"
 else
   echo "osmium not found locally; using Docker image ghcr.io/osmcode/osmium-tool" >&2
   docker run --rm \
     -v "$(pwd)/$OSM_DATA_DIR:/data" \
     ghcr.io/osmcode/osmium-tool:latest \
     osmium tags-filter "/data/$OSM_REGION.osm.pbf" \
-      n/highway=speed_camera n/speed_camera=yes n/camera:type=speed \
-      r/enforcement=maxspeed \
-      w/highway=construction w/highway=roadworks w/construction w/roadworks=yes \
-      n/hazard w/hazard \
+      "${filters[@]}" \
       --overwrite --output "/data/$OSM_REGION.alerts.osm"
 fi
 echo "Done"

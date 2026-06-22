@@ -8,5 +8,6 @@
     <file url="file://$PROJECT_DIR$/backend/migrations/0004_osm_alert_quality.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/backend/migrations/0005_alert_operational_status.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/backend/migrations/0006_alert_classification_and_presence.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0007_backend_consistency.sql" dialect="GenericSQL" />
   </component>
 </project>

@@ -102,7 +102,8 @@ function alertFromRelation(
   ways: Map<string, OsmWay>,
   source: string,
 ): RoadAlert | null {
-  if (!["maxspeed", "traffic_signals"].includes(relation.tags.enforcement ?? "")) return null;
+  const type = enforcementAlertType(relation.tags.enforcement);
+  if (!type) return null;
   const deviceNode =
     relationNode(relation, nodes, "device") ?? relationNode(relation, nodes, "via");
   const fromNode =
@@ -111,28 +112,30 @@ function alertFromRelation(
   const toNode =
     relationNode(relation, nodes, "to") ??
     relationWayEndpoint(relation, nodes, ways, "to", deviceNode);
-  const node = deviceNode ?? fromNode ?? toNode;
-  if (!node) return null;
+  const position = deviceNode ?? fromNode ?? toNode ?? relationWayCenter(relation, nodes, ways);
+  if (!position) return null;
+  const tags = { ...(deviceNode?.tags ?? {}), ...relation.tags };
   const bearing = relationBearing(fromNode, deviceNode, toNode);
   return buildAlert({
     osmType: "relation",
     osmId: relation.id,
-    type: relation.tags.enforcement === "traffic_signals" ? "redLightCamera" : "fixedSpeedCamera",
-    latitude: node.latitude,
-    longitude: node.longitude,
-    tags: relation.tags,
+    type,
+    latitude: position.latitude,
+    longitude: position.longitude,
+    tags,
     source,
     roadId: relationRoadId(relation),
     direction: bearing === null ? "unknown" : "forward",
     bearing,
-    directionBearings: bearing === null ? [] : [bearing],
-    confidence: calculateOsmConfidence(relation.tags, {
+    directionBearings: bearing === null ? parseBearings(tags) : [bearing],
+    confidence: calculateOsmConfidence(tags, {
       hasRoad: relationRoadId(relation) !== null,
-      hasBearing: bearing !== null,
+      hasBearing: bearing !== null || parseBearing(tags) !== null,
       relation: true,
       attributes: relation.attributes,
     }),
     osmRelationId: relation.id,
+    originalOsmIds: [`relation/${relation.id}`, ...(deviceNode ? [`node/${deviceNode.id}`] : [])],
     attributes: relation.attributes,
   });
 }
@@ -147,11 +150,12 @@ function alertFromElement(
   roadId: string | null,
   attributes: Record<string, string>,
 ): RoadAlert | null {
-  if (isSpeedCamera(tags)) {
+  const enforcementType = enforcementAlertType(tags.enforcement);
+  if (enforcementType || isSpeedCamera(tags)) {
     return buildAlert({
       osmType,
       osmId,
-      type: tags.enforcement === "traffic_signals" ? "redLightCamera" : "fixedSpeedCamera",
+      type: enforcementType ?? "fixedSpeedCamera",
       latitude,
       longitude,
       tags,
@@ -223,9 +227,9 @@ function buildAlert(input: {
   directionBearings?: number[];
   confidence: number;
   osmRelationId?: string | null;
+  originalOsmIds?: string[];
   attributes?: Record<string, string>;
 }): RoadAlert {
-  const now = new Date();
   const maxspeed = parseMaxspeed(
     input.tags.maxspeed ?? input.tags["maxspeed:forward"] ?? input.tags["maxspeed:backward"],
   );
@@ -248,15 +252,18 @@ function buildAlert(input: {
     osmType: input.osmType,
     osmId: input.osmId,
     osmRelationId: input.osmRelationId ?? null,
+    osmVersion: parseInteger(input.attributes?.version),
+    osmTimestamp: parseOsmDate(input.attributes?.timestamp),
+    osmChangeset: input.attributes?.changeset ?? null,
+    osmUser: input.attributes?.user ?? null,
+    osmUid: input.attributes?.uid ?? null,
     sourceTags: input.tags,
     fixme: input.tags.fixme ?? null,
-    positionApproximate: isApproximateFixme(input.tags.fixme),
+    positionApproximate: isApproximatePosition(input.tags),
     operationalStatus: operationalStatusFromTags(input.tags),
     statusReason: operationalStatusReason(input.tags),
     osmPresenceStatus: "present",
-    originalOsmIds: [`${input.osmType}/${input.osmId}`],
-    createdAt: parseOsmDate(input.attributes?.timestamp) ?? now,
-    updatedAt: now,
+    originalOsmIds: input.originalOsmIds ?? [`${input.osmType}/${input.osmId}`],
   };
 }
 
@@ -368,6 +375,21 @@ function relationWayEndpoint(
   return nearestNode(wayNodes, deviceNode);
 }
 
+function relationWayCenter(
+  relation: OsmRelation,
+  nodes: Map<string, OsmNode>,
+  ways: Map<string, OsmWay>,
+): { latitude: number; longitude: number } | null {
+  for (const member of relation.members) {
+    if (member.type !== "way") continue;
+    const way = ways.get(member.ref);
+    if (!way) continue;
+    const center = wayCenter(way, nodes);
+    if (center) return center;
+  }
+  return null;
+}
+
 function relationRoadId(relation: OsmRelation): string | null {
   const wayMember = relation.members.find(
     (item) => item.type === "way" && (item.role === "from" || item.role === "to"),
@@ -457,19 +479,40 @@ function wayCenter(
 function isSpeedCamera(tags: Record<string, string>): boolean {
   return (
     tags.highway === "speed_camera" ||
-    tags.enforcement === "maxspeed" ||
     tags["speed_camera"] === "yes" ||
     tags["camera:type"] === "speed"
   );
 }
 
+function enforcementAlertType(value: string | undefined): RoadAlert["type"] | null {
+  if (!value) return null;
+  switch (value.trim().toLowerCase()) {
+    case "maxspeed":
+    case "average_speed":
+      return "fixedSpeedCamera";
+    case "traffic_signals":
+      return "redLightCamera";
+    case "access":
+      return "accessControl";
+    case "maxweight":
+    case "weigh_station":
+      return "weightControl";
+    default:
+      return "genericEnforcement";
+  }
+}
+
 function isRoadWorks(tags: Record<string, string>): boolean {
-  return (
-    tags.highway === "construction" ||
-    tags.highway === "roadworks" ||
-    Boolean(tags.construction) ||
-    tags.roadworks === "yes"
-  );
+  if (tags.highway === "construction" || tags.highway === "roadworks") return true;
+  if (["yes", "true", "1"].includes(tags.roadworks?.toLowerCase() ?? "")) return true;
+  return Boolean(tags.highway && tags.construction && isRoadHighway(tags.highway));
+}
+
+function isRoadHighway(value: string): boolean {
+  return ![
+    "construction", "roadworks", "speed_camera", "street_lamp", "bus_stop",
+    "crossing", "traffic_signals", "give_way", "stop", "elevator",
+  ].includes(value);
 }
 
 function isRoadHazard(tags: Record<string, string>): boolean {
@@ -543,7 +586,7 @@ function calculateOsmConfidence(
     if (ageYears > 8) confidence -= 0.12;
     else if (ageYears > 4) confidence -= 0.06;
   }
-  if (isApproximateFixme(tags.fixme)) confidence -= 0.25;
+  if (isApproximatePosition(tags)) confidence -= 0.25;
   else if (tags.fixme) confidence -= 0.12;
   return Math.max(0, Math.min(1, Number(confidence.toFixed(3))));
 }
@@ -564,9 +607,14 @@ function isNegativeFixme(value: string | undefined): boolean {
 function isApproximateFixme(value: string | undefined): boolean {
   if (!value) return false;
   const normalized = value.toLowerCase();
-  return ["approx position", "approximate", "position uncertain", "uncertain position"].some(
-    (term) => normalized.includes(term),
-  );
+  return [
+    "approx position", "approximate", "position uncertain", "uncertain position",
+    "fix position", "esatta posizione", "corretta posizione", "giusta posizione", "ricalcolare",
+  ].some((term) => normalized.includes(term));
+}
+
+function isApproximatePosition(tags: Record<string, string>): boolean {
+  return [tags.fixme, tags.note, tags.description].some((value) => isApproximateFixme(value));
 }
 
 function operationalStatusFromTags(tags: Record<string, string>): "operational" | "notOperational" | "unknown" {
@@ -593,6 +641,12 @@ function operationalStatusReason(tags: Record<string, string>): string | null {
     if (tags[key] !== undefined) return `${key}=${tags[key]}`;
   }
   return null;
+}
+
+function parseInteger(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseOsmDate(value: string | undefined): Date | null {

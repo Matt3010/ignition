@@ -11,3 +11,13 @@ describe("session trace", () => {
     expect(trace).toHaveLength(2);
   });
 });
+
+
+it("keeps the trace when no previous road state exists", () => {
+  const store = new SessionTraceStore(10000, 8);
+  const baseTime = Date.now();
+  store.add({ ...validPayload, timestamp: new Date(baseTime).toISOString() });
+  expect(store.getState(validPayload.sessionId)).toBeNull();
+  const trace = store.add({ ...validPayload, timestamp: new Date(baseTime + 1000).toISOString() });
+  expect(trace).toHaveLength(2);
+});

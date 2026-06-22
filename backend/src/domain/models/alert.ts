@@ -2,6 +2,9 @@ export const alertTypes = [
   "fixedSpeedCamera",
   "mobileSpeedCamera",
   "redLightCamera",
+  "accessControl",
+  "weightControl",
+  "genericEnforcement",
   "policeControl",
   "accident",
   "roadHazard",
@@ -34,6 +37,11 @@ export interface RoadAlert {
   osmType?: string | null;
   osmId?: string | null;
   osmRelationId?: string | null;
+  osmVersion?: number | null;
+  osmTimestamp?: Date | null;
+  osmChangeset?: string | null;
+  osmUser?: string | null;
+  osmUid?: string | null;
   sourceTags?: Record<string, string> | null;
   fixme?: string | null;
   positionApproximate?: boolean;

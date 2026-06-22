@@ -5,12 +5,7 @@ import type { AlertRepository } from "../../application/ports/alert-repository.j
 export class InMemoryAlertRepository implements AlertRepository {
   constructor(private alerts: RoadAlert[] = []) {}
 
-  async findNearby(input: {
-    latitude: number;
-    longitude: number;
-    radiusMeters: number;
-    now: Date;
-  }): Promise<AlertCandidate[]> {
+  async findNearby(input: { latitude: number; longitude: number; radiusMeters: number }): Promise<AlertCandidate[]> {
     return this.alerts
       .map((alert) => ({
         ...alert,

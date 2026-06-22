@@ -22,45 +22,58 @@ const importRepository = new PostgresImportLogRepository(pool);
 try {
   const content = await readFile(options.file, "utf8");
   const parsed = parseOsmAlerts(content, options.source);
-  const count = await alertRepository.upsertMany(parsed.alerts);
-  const deactivatedCount =
-    options.deactivateStale && parsed.bounds
-      ? await alertRepository.deactivateMissingInBounds({
-          source: options.source,
-          activeIds: parsed.alerts.map((alert) => alert.id),
-          bounds: parsed.bounds,
-        })
-      : 0;
+  const result = await alertRepository.syncMany({
+    alerts: parsed.alerts,
+    source: options.source,
+    bounds: parsed.bounds,
+    deactivateMissing: options.deactivateStale,
+  });
   const bbox = parsed.bounds ? formatBounds(parsed.bounds) : null;
-  await importRepository.record({
-    source: options.source,
-    version: options.version,
-    status: "success",
-    recordsCount: count,
-    bbox,
-    filePath: options.file,
-    deactivatedCount,
-  });
-  console.log(
-    JSON.stringify({
+
+  try {
+    await importRepository.record({
       source: options.source,
-      file: options.file,
+      version: options.version,
+      status: "success",
+      recordsCount: result.upserted,
       bbox,
-      elementsScanned: parsed.elementsScanned,
-      records: parsed.alerts.length,
-      upserted: count,
-      deactivated: deactivatedCount,
-    }),
-  );
-} catch (error) {
-  await importRepository.record({
+      filePath: options.file,
+      deactivatedCount: result.deactivated,
+    });
+  } catch (logError) {
+    console.error(JSON.stringify({
+      event: "osm_import_log_failed",
+      status: "success",
+      error: logError instanceof Error ? logError.message : String(logError),
+    }));
+  }
+
+  console.log(JSON.stringify({
     source: options.source,
-    version: options.version,
-    status: "failed",
-    recordsCount: 0,
-    filePath: options.file,
-    errorMessage: error instanceof Error ? error.message : String(error),
-  });
+    file: options.file,
+    bbox,
+    elementsScanned: parsed.elementsScanned,
+    records: parsed.alerts.length,
+    upserted: result.upserted,
+    deactivated: result.deactivated,
+  }));
+} catch (error) {
+  try {
+    await importRepository.record({
+      source: options.source,
+      version: options.version,
+      status: "failed",
+      recordsCount: 0,
+      filePath: options.file,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+  } catch (logError) {
+    console.error(JSON.stringify({
+      event: "osm_import_log_failed",
+      status: "failed",
+      error: logError instanceof Error ? logError.message : String(logError),
+    }));
+  }
   throw error;
 } finally {
   await pool.end();
@@ -76,7 +89,10 @@ async function parseArgs(args: string[]): Promise<CliOptions> {
     file,
     source: result.get("source") ?? "osm",
     version: result.get("version") ?? new Date().toISOString(),
-    deactivateStale: parseBoolean(result.get("deactivate-stale") ?? process.env.OSM_ALERT_DEACTIVATE_STALE, true),
+    deactivateStale: parseBoolean(
+      result.get("deactivate-stale") ?? process.env.OSM_ALERT_DEACTIVATE_STALE,
+      true,
+    ),
   };
 }
 
