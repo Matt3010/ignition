@@ -11,6 +11,8 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     REQUEST_TIMEOUT_MS: 5000,
     VALHALLA_TIMEOUT_MS: 100,
     MAX_GPS_ACCURACY_METERS: 100,
+    MAX_SAMPLE_AGE_SECONDS: 365 * 24 * 60 * 60,
+    MAX_SAMPLE_FUTURE_SECONDS: 60,
     ALERT_SEARCH_RADIUS_METERS: 1500,
     ALERT_BEHIND_MIN_ANGLE_DEGREES: 135,
     ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES: 170,
@@ -34,6 +36,8 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     OSM_REGION: "italy",
     OSM_DATA_DIR: "./data/osm",
     OSM_HOST_DATA_DIR: undefined,
+    OSM_IMPORT_MIN_RETAIN_RATIO: 0.2,
+    OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK: 20,
     VALHALLA_TILE_DIR: "./data/valhalla",
     ...overrides,
   };

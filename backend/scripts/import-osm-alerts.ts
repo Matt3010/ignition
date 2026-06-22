@@ -27,6 +27,8 @@ try {
     source: options.source,
     bounds: parsed.bounds,
     deactivateMissing: options.deactivateStale,
+    minRetainRatio: config.OSM_IMPORT_MIN_RETAIN_RATIO,
+    minExistingForRatioCheck: config.OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK,
   });
   const bbox = parsed.bounds ? formatBounds(parsed.bounds) : null;
 

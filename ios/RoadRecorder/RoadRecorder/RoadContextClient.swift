@@ -76,6 +76,39 @@ struct RoadAlert: Codable {
     let osmId: String?
     let osmRelationId: String?
     let osmTimestamp: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, subtype, capabilities, primaryCapability, distanceMeters
+        case speedLimitKmh, speedLimitSource, latitude, longitude, direction, confidence
+        case operationalStatus, statusReason, directionBearings, osmPresenceStatus, active
+        case positionApproximate, osmType, osmId, osmRelationId, osmTimestamp
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        subtype = try container.decodeIfPresent(String.self, forKey: .subtype)
+        capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities) ?? []
+        primaryCapability = try container.decodeIfPresent(String.self, forKey: .primaryCapability)
+        distanceMeters = try container.decode(Double.self, forKey: .distanceMeters)
+        speedLimitKmh = try container.decodeIfPresent(Int.self, forKey: .speedLimitKmh)
+        speedLimitSource = try container.decodeIfPresent(String.self, forKey: .speedLimitSource)
+        latitude = try container.decode(Double.self, forKey: .latitude)
+        longitude = try container.decode(Double.self, forKey: .longitude)
+        direction = try container.decode(String.self, forKey: .direction)
+        confidence = try container.decode(Double.self, forKey: .confidence)
+        operationalStatus = try container.decodeIfPresent(String.self, forKey: .operationalStatus)
+        statusReason = try container.decodeIfPresent(String.self, forKey: .statusReason)
+        directionBearings = try container.decodeIfPresent([Double].self, forKey: .directionBearings)
+        osmPresenceStatus = try container.decodeIfPresent(String.self, forKey: .osmPresenceStatus)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        positionApproximate = try container.decodeIfPresent(Bool.self, forKey: .positionApproximate)
+        osmType = try container.decodeIfPresent(String.self, forKey: .osmType)
+        osmId = try container.decodeIfPresent(String.self, forKey: .osmId)
+        osmRelationId = try container.decodeIfPresent(String.self, forKey: .osmRelationId)
+        osmTimestamp = try container.decodeIfPresent(String.self, forKey: .osmTimestamp)
+    }
 }
 
 struct RecorderEvent: Identifiable, Codable {

@@ -18,6 +18,20 @@ export class RoadContextController {
       ]);
     }
 
+    const sampleTimestamp = Date.parse(payload.timestamp);
+    const sampleAgeMs = Date.now() - sampleTimestamp;
+    const maxAgeMs = request.server.config.MAX_SAMPLE_AGE_SECONDS * 1000;
+    const maxFutureMs = request.server.config.MAX_SAMPLE_FUTURE_SECONDS * 1000;
+    if (sampleAgeMs > maxAgeMs || sampleAgeMs < -maxFutureMs) {
+      throw new ApplicationError("INVALID_REQUEST", "Timestamp GPS fuori dalla finestra consentita", 400, [
+        {
+          path: "timestamp",
+          maxAgeSeconds: request.server.config.MAX_SAMPLE_AGE_SECONDS,
+          maxFutureSeconds: request.server.config.MAX_SAMPLE_FUTURE_SECONDS,
+        },
+      ]);
+    }
+
     const scenarioHeader = request.headers["x-road-context-scenario"];
     const scenario = Array.isArray(scenarioHeader) ? scenarioHeader[0] : scenarioHeader;
     if (scenario && request.server.config.NODE_ENV === "production") {

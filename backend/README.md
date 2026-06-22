@@ -320,6 +320,8 @@ Vedere `.env.example`. Le più importanti:
 - `ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS`
 - `SESSION_TRACE_TTL_SECONDS`
 - `MAX_GPS_ACCURACY_METERS`
+- `MAX_SAMPLE_AGE_SECONDS`
+- `MAX_SAMPLE_FUTURE_SECONDS`
 - `OSM_EXTRACT_PRESET`
 - `OSM_EXTRACT_URL`
 - `OSM_REGION`
@@ -346,3 +348,8 @@ Vedere `.env.example`. Le più importanti:
 - Nessun alert: verificare raggio, direzione, `active`, `valid_until`, `road_id`.
 - Valhalla timeout: aumentare `VALHALLA_TIMEOUT_MS` o verificare risorse CPU/RAM.
 - Raspberry lento nella build tile: costruire tile altrove e trasferirle.
+
+
+### Protezione import OSM
+
+Gli import con disattivazione degli alert mancanti rifiutano dataset vuoti o cali anomali. Le soglie sono configurabili con `OSM_IMPORT_MIN_RETAIN_RATIO` e `OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK`.

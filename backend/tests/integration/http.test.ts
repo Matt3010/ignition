@@ -141,3 +141,27 @@ describe("HTTP API", () => {
   });
 
 });
+
+it("rejects stale and excessively future GPS timestamps", async () => {
+  const app = await buildApp(testConfig({
+    MAX_SAMPLE_AGE_SECONDS: 30,
+    MAX_SAMPLE_FUTURE_SECONDS: 5,
+  }));
+
+  const stale = await app.inject({
+    method: "POST",
+    url: "/api/v1/road-context",
+    payload: { ...validPayload, timestamp: new Date(Date.now() - 31_000).toISOString() },
+  });
+  const future = await app.inject({
+    method: "POST",
+    url: "/api/v1/road-context",
+    payload: { ...validPayload, sessionId: "550e8400-e29b-41d4-a716-446655440001", timestamp: new Date(Date.now() + 6_000).toISOString() },
+  });
+
+  expect(stale.statusCode).toBe(400);
+  expect(future.statusCode).toBe(400);
+  expect(stale.json().error.message).toBe("Timestamp GPS fuori dalla finestra consentita");
+  expect(future.json().error.message).toBe("Timestamp GPS fuori dalla finestra consentita");
+  await app.close();
+});

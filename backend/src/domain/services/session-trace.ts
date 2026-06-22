@@ -9,6 +9,7 @@ export class SessionTraceStore {
     private readonly ttlMs: number,
     private readonly maxSamples = 8,
     private readonly maxSessions = 5_000,
+    private readonly maxFutureSkewMs = 5_000,
   ) {}
 
   add(sample: GpsSample): GpsSample[] {
@@ -17,7 +18,10 @@ export class SessionTraceStore {
     this.touch(sample.sessionId, now);
     const previous = this.traces.get(sample.sessionId) ?? [];
     const next = [...previous, sample]
-      .filter((item) => now - Date.parse(item.timestamp) <= this.ttlMs)
+      .filter((item) => {
+        const age = now - Date.parse(item.timestamp);
+        return age >= -this.maxFutureSkewMs && age <= this.ttlMs;
+      })
       .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
       .slice(-this.maxSamples);
     this.traces.set(sample.sessionId, next);

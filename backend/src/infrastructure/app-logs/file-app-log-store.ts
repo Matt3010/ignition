@@ -92,26 +92,48 @@ export class FileAppLogStore {
 
   private async performCleanup(): Promise<void> {
     const entries = await readdir(this.directory, { withFileTypes: true });
-    const files = await Promise.all(
+    const files = (await Promise.all(
       entries
         .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
         .map(async (entry) => {
           const filePath = path.join(this.directory, entry.name);
-          const info = await stat(filePath);
-          return { name: entry.name, filePath, modifiedAt: info.mtimeMs };
+          try {
+            const info = await stat(filePath);
+            return { name: entry.name, filePath, modifiedAt: info.mtimeMs };
+          } catch (error) {
+            if (isMissingFile(error)) return null;
+            throw error;
+          }
         }),
+    )).filter((file): file is { name: string; filePath: string; modifiedAt: number } => file !== null);
+
+    const protectedBaseFiles = new Set(
+      [...this.sessionQueues.keys()].map((sessionId) => `${sessionId}.jsonl`),
     );
-
     const cutoff = Date.now() - this.options.retentionMs;
-    const expired = files.filter((file) => file.modifiedAt < cutoff);
-    await Promise.all(expired.map((file) => unlink(file.filePath)));
+    const expired = files.filter(
+      (file) => file.modifiedAt < cutoff && !protectedBaseFiles.has(file.name),
+    );
+    await Promise.all(expired.map((file) => this.unlinkIfPresent(file.filePath)));
 
+    const expiredNames = new Set(expired.map((file) => file.name));
     const remaining = files
-      .filter((file) => file.modifiedAt >= cutoff)
+      .filter((file) => !expiredNames.has(file.name))
       .sort((left, right) => right.modifiedAt - left.modifiedAt);
-    const excess = remaining.slice(this.options.maxFiles);
-    await Promise.all(excess.map((file) => unlink(file.filePath)));
+    const removable = remaining.filter((file) => !protectedBaseFiles.has(file.name));
+    const protectedCount = remaining.length - removable.length;
+    const removableLimit = Math.max(0, this.options.maxFiles - protectedCount);
+    const excess = removable.slice(removableLimit);
+    await Promise.all(excess.map((file) => this.unlinkIfPresent(file.filePath)));
   }
+  private async unlinkIfPresent(filePath: string): Promise<void> {
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+  }
+
 }
 
 function isMissingFile(error: unknown): boolean {

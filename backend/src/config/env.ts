@@ -15,6 +15,8 @@ const envSchema = z.object({
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   VALHALLA_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
   MAX_GPS_ACCURACY_METERS: z.coerce.number().positive().default(50),
+  MAX_SAMPLE_AGE_SECONDS: z.coerce.number().positive().default(60),
+  MAX_SAMPLE_FUTURE_SECONDS: z.coerce.number().min(0).default(5),
   ALERT_SEARCH_RADIUS_METERS: z.coerce.number().positive().default(1500),
   ALERT_BEHIND_MIN_ANGLE_DEGREES: z.coerce.number().min(90).max(180).default(135),
   ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES: z.coerce.number().min(135).max(180).default(170),
@@ -38,6 +40,8 @@ const envSchema = z.object({
   OSM_REGION: z.string().default("italy"),
   OSM_DATA_DIR: z.string().default("./data/osm"),
   OSM_HOST_DATA_DIR: z.string().optional(),
+  OSM_IMPORT_MIN_RETAIN_RATIO: z.coerce.number().min(0).max(1).default(0.2),
+  OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK: z.coerce.number().int().min(0).default(20),
   VALHALLA_TILE_DIR: z.string().default("./data/valhalla"),
 });
 

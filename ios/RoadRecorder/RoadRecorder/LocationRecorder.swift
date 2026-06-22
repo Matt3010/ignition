@@ -30,6 +30,12 @@ final class LocationRecorder: NSObject, ObservableObject {
     private var lastSentAt: Date?
     private var currentSessionArchive: RecorderSessionArchive?
     private var currentSessionEvents: [RecorderEvent] = []
+    private var activeSendTask: Task<Void, Never>?
+    private var activeRequestToken: UUID?
+    private var sessionGeneration = UUID()
+    private var archiveRevision = 0
+    private let maximumLocationAge: TimeInterval = 10
+    private let maximumLocationFutureSkew: TimeInterval = 5
 
     var canStartRecording: Bool {
         isRecording || validatedBackendURL != nil
@@ -57,7 +63,10 @@ final class LocationRecorder: NSObject, ObservableObject {
             return
         }
 
+        activeSendTask?.cancel()
+        sessionGeneration = UUID()
         sessionId = UUID()
+        archiveRevision = 0
         sentCount = 0
         errorCount = 0
         events = []
@@ -98,7 +107,13 @@ final class LocationRecorder: NSObject, ObservableObject {
 
     func stopRecording() {
         manager.stopUpdatingLocation()
+        activeSendTask?.cancel()
+        activeSendTask = nil
+        activeRequestToken = nil
+        let stoppedSessionId = sessionId
+        let stoppedBackendURL = validatedBackendURL
         isRecording = false
+        sessionGeneration = UUID()
         statusText = "Fermo"
         if var archive = currentSessionArchive {
             archive.endedAt = isoFormatter.string(from: Date())
@@ -107,7 +122,13 @@ final class LocationRecorder: NSObject, ObservableObject {
             archive.events = currentSessionEvents
             currentSessionArchive = archive
             persistCurrentSession(refreshList: true)
-            sendAppLog(kind: "session_stop", event: nil, message: "recording stopped")
+            sendAppLog(
+                kind: "session_stop",
+                event: nil,
+                message: "recording stopped",
+                sessionId: stoppedSessionId,
+                backendURL: stoppedBackendURL
+            )
         }
     }
 
@@ -145,6 +166,11 @@ final class LocationRecorder: NSObject, ObservableObject {
 
     private func handle(location: CLLocation) {
         guard isRecording else { return }
+        let locationAge = Date().timeIntervalSince(location.timestamp)
+        guard locationAge <= maximumLocationAge, locationAge >= -maximumLocationFutureSkew else {
+            statusText = "Posizione GPS non aggiornata"
+            return
+        }
         guard location.horizontalAccuracy > 0, location.horizontalAccuracy <= 50 else {
             lastAccuracyText = "\(Int(max(location.horizontalAccuracy, 0).rounded())) m"
             statusText = "GPS poco accurato"
@@ -166,8 +192,21 @@ final class LocationRecorder: NSObject, ObservableObject {
             sessionId: sessionId.uuidString
         )
 
-        Task {
-            await send(sample)
+        guard activeSendTask == nil, let backendURL = validatedBackendURL else { return }
+        let requestGeneration = sessionGeneration
+        let requestSessionId = sessionId
+        let requestToken = UUID()
+        activeRequestToken = requestToken
+        activeSendTask = Task { [weak self] in
+            await self?.send(
+                sample,
+                backendURL: backendURL,
+                requestSessionId: requestSessionId,
+                requestGeneration: requestGeneration
+            )
+            guard let self, self.activeRequestToken == requestToken else { return }
+            self.activeSendTask = nil
+            self.activeRequestToken = nil
         }
     }
 
@@ -181,14 +220,18 @@ final class LocationRecorder: NSObject, ObservableObject {
         return true
     }
 
-    private func send(_ sample: RoadContextSample) async {
+    private func send(
+        _ sample: RoadContextSample,
+        backendURL: URL,
+        requestSessionId: UUID,
+        requestGeneration: UUID
+    ) async {
         let startedAtDate = Date()
         let requestStartedAt = isoFormatter.string(from: startedAtDate)
         do {
-            guard let backendURL = validatedBackendURL else {
-                throw RoadContextClientError.invalidBaseURL
-            }
             let result = try await client.send(sample: sample, backendBaseURL: backendURL)
+            try Task.checkCancellation()
+            guard isCurrentRequest(sessionId: requestSessionId, generation: requestGeneration) else { return }
             let endedAtDate = Date()
             sentCount += 1
             let event = RecorderEvent(
@@ -201,8 +244,11 @@ final class LocationRecorder: NSObject, ObservableObject {
                 httpStatusCode: result.httpStatusCode
             )
             statusText = warmupOnly(event) ? "Aggancio in corso" : result.response.matched ? "Invio ok" : "Non agganciata"
-            prepend(event)
+            prepend(event, sessionId: requestSessionId, backendURL: backendURL)
+        } catch is CancellationError {
+            return
         } catch {
+            guard isCurrentRequest(sessionId: requestSessionId, generation: requestGeneration) else { return }
             let endedAtDate = Date()
             errorCount += 1
             statusText = "Errore invio"
@@ -220,11 +266,16 @@ final class LocationRecorder: NSObject, ObservableObject {
                 requestEndedAt: isoFormatter.string(from: endedAtDate),
                 latencyMs: endedAtDate.timeIntervalSince(startedAtDate) * 1000,
                 httpStatusCode: httpStatusCode
-            ))
+            ), sessionId: requestSessionId, backendURL: backendURL)
         }
     }
 
-    private func prepend(_ event: RecorderEvent) {
+    private func isCurrentRequest(sessionId requestSessionId: UUID, generation: UUID) -> Bool {
+        isRecording && sessionId == requestSessionId && sessionGeneration == generation
+    }
+
+    private func prepend(_ event: RecorderEvent, sessionId eventSessionId: UUID, backendURL: URL) {
+        guard sessionId == eventSessionId, isRecording else { return }
         let hiddenFromTimeline = warmupOnly(event)
         currentSessionEvents.append(event)
         if !hiddenFromTimeline {
@@ -240,7 +291,13 @@ final class LocationRecorder: NSObject, ObservableObject {
             currentSessionArchive = archive
             persistCurrentSession()
         }
-        sendAppLog(kind: "road_context_event", event: event, message: nil)
+        sendAppLog(
+            kind: "road_context_event",
+            event: event,
+            message: nil,
+            sessionId: eventSessionId,
+            backendURL: backendURL
+        )
     }
 
     private func warmupOnly(_ event: RecorderEvent) -> Bool {
@@ -252,34 +309,52 @@ final class LocationRecorder: NSObject, ObservableObject {
 
     private func persistCurrentSession(refreshList: Bool = false) {
         guard let archive = currentSessionArchive else { return }
+        archiveRevision += 1
+        let revision = archiveRevision
+        let archiveSessionId = archive.id
         Task {
             do {
-                let fileURL = try await sessionStore.save(archive)
-                currentSessionFileURL = fileURL
+                if let fileURL = try await sessionStore.save(archive, revision: revision), sessionId == archiveSessionId {
+                    currentSessionFileURL = fileURL
+                }
                 if refreshList {
                     await reloadSavedSessions()
                 }
             } catch {
-                statusText = "Errore salvataggio sessione"
+                if sessionId == archiveSessionId {
+                    statusText = "Errore salvataggio sessione"
+                }
             }
         }
     }
 
     private var validatedBackendURL: URL? {
         let value = backendBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: value), url.scheme != nil, url.host != nil else {
+        guard
+            let url = URL(string: value),
+            let scheme = url.scheme?.lowercased(),
+            ["http", "https"].contains(scheme),
+            url.host != nil
+        else {
             return nil
         }
         return url
     }
 
-    private func sendAppLog(kind: String, event: RecorderEvent?, message: String?) {
-        guard let backendURL = validatedBackendURL else { return }
+    private func sendAppLog(
+        kind: String,
+        event: RecorderEvent?,
+        message: String?,
+        sessionId explicitSessionId: UUID? = nil,
+        backendURL explicitBackendURL: URL? = nil
+    ) {
+        guard let backendURL = explicitBackendURL ?? validatedBackendURL else { return }
+        let logSessionId = explicitSessionId ?? sessionId
         let payload = AppLogPayload(
-            sessionId: sessionId.uuidString,
+            sessionId: logSessionId.uuidString,
             createdAt: isoFormatter.string(from: Date()),
             kind: kind,
-            backendBaseURL: backendBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            backendBaseURL: backendURL.absoluteString,
             message: message,
             counters: AppLogCounters(
                 sentCount: sentCount,
@@ -296,6 +371,7 @@ final class LocationRecorder: NSObject, ObservableObject {
             }
         }
     }
+
 }
 
 private actor BackendSettingsStore {
@@ -345,6 +421,7 @@ private actor SessionArchiveStore {
     private let directoryURL: URL
     private let encoder: JSONEncoder
     private let decoder = JSONDecoder()
+    private var latestRevisionBySession: [UUID: Int] = [:]
 
     init() {
         directoryURL = FileManager.default
@@ -354,11 +431,14 @@ private actor SessionArchiveStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
-    func save(_ archive: RecorderSessionArchive) throws -> URL {
+    func save(_ archive: RecorderSessionArchive, revision: Int) throws -> URL? {
+        let latestRevision = latestRevisionBySession[archive.id] ?? -1
+        guard revision >= latestRevision else { return nil }
         try ensureDirectory()
         let fileURL = url(for: archive.id)
         let data = try encoder.encode(archive)
         try data.write(to: fileURL, options: [.atomic])
+        latestRevisionBySession[archive.id] = revision
         return fileURL
     }
 
@@ -370,11 +450,15 @@ private actor SessionArchiveStore {
             options: [.skipsHiddenFiles]
         )
 
-        return try fileURLs
+        return fileURLs
             .filter { $0.pathExtension == "json" }
             .compactMap { fileURL in
-                let data = try Data(contentsOf: fileURL)
-                let archive = try decoder.decode(RecorderSessionArchive.self, from: data)
+                guard
+                    let data = try? Data(contentsOf: fileURL),
+                    let archive = try? decoder.decode(RecorderSessionArchive.self, from: data)
+                else {
+                    return nil
+                }
                 return SavedSessionSummary(
                     id: archive.id,
                     startedAt: archive.startedAt,
@@ -391,6 +475,7 @@ private actor SessionArchiveStore {
 
     func delete(_ session: SavedSessionSummary) throws {
         try FileManager.default.removeItem(at: session.fileURL)
+        latestRevisionBySession.removeValue(forKey: session.id)
     }
 
     private func ensureDirectory() throws {

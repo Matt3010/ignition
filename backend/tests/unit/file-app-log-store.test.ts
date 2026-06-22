@@ -72,3 +72,23 @@ describe("FileAppLogStore", () => {
     expect(files.length).toBeLessThanOrEqual(3);
   });
 });
+
+it("handles concurrent writes from different sessions without losing active base files", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "file-app-log-store-multi-session-"));
+  const store = new FileAppLogStore(directory, {
+    maxFileBytes: 220,
+    maxFiles: 4,
+    retentionMs: 60_000,
+  });
+
+  const sessionIds = Array.from({ length: 4 }, (_, index) =>
+    `550e8400-e29b-41d4-a716-4466554401${index}`,
+  );
+  await Promise.all(sessionIds.map((id, index) => store.append({ ...payload(index), sessionId: id }, {
+    requestId: `multi-${index}`,
+    receivedAt: "2026-06-22T12:00:00Z",
+  })));
+
+  const files = (await readdir(directory)).filter((file) => file.endsWith(".jsonl"));
+  for (const id of sessionIds) expect(files).toContain(`${id}.jsonl`);
+});

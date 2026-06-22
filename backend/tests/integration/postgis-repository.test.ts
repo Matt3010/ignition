@@ -96,3 +96,29 @@ it("binds every upsert placeholder and commits atomically", async () => {
     "commit",
   ]);
 });
+
+it("refuses an empty or anomalously small import before deactivating alerts", async () => {
+  const calls: Array<{ sql: string; values: unknown[] }> = [];
+  const client = {
+    query: async (sql: string, values: unknown[] = []) => {
+      calls.push({ sql, values });
+      if (sql.includes("select count(*)::int as count")) return { rows: [{ count: 100 }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+    release: () => undefined,
+  };
+  const repository = new PostgisAlertRepository({ connect: async () => client } as any);
+  const bounds = { minLatitude: 44, minLongitude: 10, maxLatitude: 46, maxLongitude: 12 };
+
+  await expect(repository.syncMany({
+    alerts: [],
+    source: "osm",
+    bounds,
+    deactivateMissing: true,
+    minRetainRatio: 0.2,
+    minExistingForRatioCheck: 20,
+  })).rejects.toThrow("Refusing empty OSM import");
+
+  expect(calls.some((call) => call.sql.includes("update road_alerts"))).toBe(false);
+  expect(calls.map((call) => call.sql.trim())).toContain("rollback");
+});
