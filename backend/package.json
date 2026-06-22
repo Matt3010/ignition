@@ -23,7 +23,9 @@
     "osm:download": "bash scripts/download-osm-extract.sh",
     "osm:refresh": "bash scripts/refresh-osm.sh",
     "osm:refresh:loop": "bash scripts/osm-refresh-loop.sh",
-    "health": "node scripts/run-compiled.mjs health"
+    "health": "node scripts/run-compiled.mjs health",
+    "test:integration:postgis": "vitest run tests/live/postgis-live.test.ts",
+    "test:integration:valhalla": "vitest run tests/live/valhalla-live.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

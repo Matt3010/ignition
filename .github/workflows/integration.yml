@@ -1,0 +1,164 @@
+name: Real integrations
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/integration.yml'
+  push:
+    branches: [main, master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/integration.yml'
+  workflow_dispatch:
+    inputs:
+      run_valhalla:
+        description: Run the real Valhalla tile-build and map-matching job
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: '23 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgis:
+    name: PostgreSQL/PostGIS integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: road_context
+          POSTGRES_USER: road
+          POSTGRES_PASSWORD: road
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U road -d road_context"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://road:road@127.0.0.1:5432/road_context
+      RUN_DB_INTEGRATION: '1'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run migrations
+        run: npm run migrate
+
+      - name: Run live PostGIS tests
+        run: npx vitest run tests/live/postgis-live.test.ts --reporter=verbose
+
+  valhalla:
+    name: Valhalla real map matching
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_valhalla) ||
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      RUN_VALHALLA_INTEGRATION: '1'
+      VALHALLA_DOCKER_IMAGE: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+      VALHALLA_DOCKER_PLATFORM: linux/amd64
+      VALHALLA_BASE_URL: http://127.0.0.1:8002
+      OSM_REGION: monaco
+      OSM_DATA_DIR: ./data/osm
+      VALHALLA_TILE_DIR: ./data/valhalla-ci
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull pinned Valhalla image
+        run: docker pull "${VALHALLA_DOCKER_IMAGE}"
+
+      - name: Download Monaco OSM extract
+        run: |
+          mkdir -p "${OSM_DATA_DIR}"
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output "${OSM_DATA_DIR}/${OSM_REGION}.osm.pbf" \
+            https://download.geofabrik.de/europe/monaco-latest.osm.pbf
+
+      - name: Build Valhalla tiles
+        run: npm run valhalla:build
+
+      - name: Start Valhalla
+        run: |
+          docker run --detach --rm \
+            --name ignition-ci-valhalla \
+            --platform "${VALHALLA_DOCKER_PLATFORM}" \
+            --publish 8002:8002 \
+            --entrypoint valhalla_service \
+            --volume "$(pwd)/data/valhalla-ci:/custom_files" \
+            "${VALHALLA_DOCKER_IMAGE}" \
+            /custom_files/valhalla.json 1
+
+      - name: Wait for Valhalla
+        run: |
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:8002/status >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs ignition-ci-valhalla
+          exit 1
+
+      - name: Run live Valhalla tests
+        run: npx vitest run tests/live/valhalla-live.test.ts --reporter=verbose
+
+      - name: Upload Valhalla logs on failure
+        if: failure()
+        run: docker logs ignition-ci-valhalla > valhalla-ci.log 2>&1 || true
+
+      - name: Publish failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valhalla-ci-logs
+          path: backend/valhalla-ci.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop Valhalla
+        if: always()
+        run: docker stop ignition-ci-valhalla || true

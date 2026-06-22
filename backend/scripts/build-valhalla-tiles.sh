@@ -35,7 +35,7 @@ fi
 mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
 chmod 0777 "$VALHALLA_TILE_DIR_ABS" "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
 cp docker/valhalla/valhalla.json "$VALHALLA_TILE_DIR_ABS/valhalla.json"
-docker run --rm --platform linux/arm64/v8 \
+docker run --rm --platform "${VALHALLA_DOCKER_PLATFORM:-linux/arm64/v8}" \
   --entrypoint valhalla_build_tiles \
   -v "${OSM_MOUNT_DIR_ABS}:/data/osm" \
   -v "${VALHALLA_MOUNT_DIR_ABS}:/custom_files" \

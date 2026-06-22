@@ -353,3 +353,22 @@ Vedere `.env.example`. Le più importanti:
 ### Protezione import OSM
 
 Gli import con disattivazione degli alert mancanti rifiutano dataset vuoti o cali anomali. Le soglie sono configurabili con `OSM_IMPORT_MIN_RETAIN_RATIO` e `OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK`.
+
+## GitHub Actions
+
+Il repository include due workflow in `.github/workflows`:
+
+- `ci.yml`: esegue su push, pull request e avvio manuale installazione riproducibile, lint, build TypeScript, test, audit delle dipendenze, controllo sintattico Bash e parsing dei sorgenti Swift.
+- `integration.yml`: avvia PostgreSQL/PostGIS reale, applica le migration ed esegue test spaziali reali. Su `main`/`master`, pianificazione settimanale o avvio manuale può inoltre scaricare l'estratto OSM di Monaco, costruire tile Valhalla e verificare un map matching reale.
+
+I test live restano esclusi dalla suite locale normale e vengono abilitati esplicitamente tramite:
+
+```bash
+RUN_DB_INTEGRATION=1 DATABASE_URL=postgres://road:road@127.0.0.1:5432/road_context \
+  npm run test:integration:postgis
+
+RUN_VALHALLA_INTEGRATION=1 VALHALLA_BASE_URL=http://127.0.0.1:8002 \
+  npm run test:integration:valhalla
+```
+
+Il job Valhalla è separato perché scarica dati OSM e costruisce tile reali, quindi è più lento della CI ordinaria.
