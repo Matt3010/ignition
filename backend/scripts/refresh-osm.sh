@@ -158,7 +158,8 @@ echo "{\"event\":\"osm_refresh_started\",\"region\":\"$OSM_REGION_LABEL\",\"tile
 acquire_lock
 require_container_control
 npm run osm:download
-rm -rf "$VALHALLA_STAGING_TILE_DIR"
+mkdir -p "$VALHALLA_STAGING_TILE_DIR"
+echo "{\"event\":\"osm_refresh_staging_ready\",\"region\":\"$OSM_REGION_LABEL\",\"resumeEnabled\":true}"
 VALHALLA_TILE_DIR="$VALHALLA_STAGING_TILE_DIR" \
   VALHALLA_BUILD_HOST_TILE_DIR="$VALHALLA_STAGING_BUILD_HOST_TILE_DIR" \
   npm run valhalla:build

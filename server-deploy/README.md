@@ -66,3 +66,15 @@ docker compose logs -f postgres
 ```
 
 Keep the generated `data/`, `reports/`, and Docker volumes during normal updates.
+
+## Ripresa della build Valhalla
+
+La directory `data/valhalla.next` è persistente. La build registra checkpoint dopo
+la preparazione degli indici OSM, dopo la generazione del grafo iniziale e dopo
+le fasi finali. Se `osm-refresh` viene fermato o ricreato, al riavvio riparte
+dall'ultimo checkpoint completato senza cancellare lo staging.
+
+Non vengono mai attivate tile parziali: `data/valhalla` cambia solo dopo il
+completamento di tutte le fasi e il successivo health check. Se cambiano PBF,
+configurazione Valhalla, immagine o piattaforma, lo staging incompatibile viene
+azzerato intenzionalmente e ricostruito.

@@ -416,3 +416,10 @@ Per un deploy pubblico, imposta la visibilità del package su `Public` nelle imp
 I file Compose inclusi nel progetto eseguono il servizio one-shot `valhalla-init` prima di Valhalla. Il servizio usa la configurazione versionata nell'immagine (`/app/docker/valhalla/valhalla.json`) e inizializza automaticamente `data/valhalla/valhalla.json` quando il file è assente, vuoto o non valido. Un file valido già presente viene mantenuto.
 
 Non è necessario copiare manualmente `valhalla.json` sul server. Dopo la pubblicazione della nuova immagine è sufficiente eseguire `docker compose pull` e `docker compose up -d`.
+
+### Resume della build tile
+
+`valhalla:build` divide la pipeline Valhalla in fasi con checkpoint persistenti
+nella directory di staging. Un riavvio riprende dall'ultima fase completata e
+non elimina `valhalla.next`. Le tile attive vengono sostituite solo dopo build,
+health check e import alert completati.
