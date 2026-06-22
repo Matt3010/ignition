@@ -54,3 +54,70 @@ it("rejects duplicate and out-of-order samples without mutating the trace", () =
     new Date(baseTime + 2_000).toISOString(),
   ]);
 });
+
+
+it("rolls back only the matching latest sample", () => {
+  const store = new SessionTraceStore(10_000, 8);
+  const baseTime = Date.now();
+  const first = { ...validPayload, timestamp: new Date(baseTime).toISOString() };
+  const second = { ...validPayload, timestamp: new Date(baseTime + 1_000).toISOString() };
+
+  store.add(first);
+  store.add(second);
+  store.rollbackLast(validPayload.sessionId, first.timestamp);
+
+  expect(() => store.add({ ...validPayload, timestamp: second.timestamp })).toThrow();
+  store.rollbackLast(validPayload.sessionId, second.timestamp);
+  expect(() => store.add({ ...validPayload, timestamp: second.timestamp })).not.toThrow();
+});
+
+
+it("preserves, degrades, and then clears road state after consecutive match misses", () => {
+  const store = new SessionTraceStore(10_000);
+  store.setState(validPayload.sessionId, {
+    roadId: "road-a",
+    roadType: "primary",
+    direction: "forward",
+    confidence: 0.8,
+  });
+
+  store.registerMatchMiss(validPayload.sessionId);
+  expect(store.getState(validPayload.sessionId)).toMatchObject({
+    roadId: "road-a",
+    confidence: 0.8,
+  });
+
+  store.registerMatchMiss(validPayload.sessionId);
+  expect(store.getState(validPayload.sessionId)).toMatchObject({
+    roadId: "road-a",
+    confidence: 0.4,
+  });
+
+  store.registerMatchMiss(validPayload.sessionId);
+  expect(store.getState(validPayload.sessionId)).toBeNull();
+});
+
+it("resets consecutive match misses when a new road match is committed", () => {
+  const store = new SessionTraceStore(10_000);
+  store.setState(validPayload.sessionId, {
+    roadId: "road-a",
+    roadType: "primary",
+    direction: "forward",
+    confidence: 0.8,
+  });
+  store.registerMatchMiss(validPayload.sessionId);
+  store.registerMatchMiss(validPayload.sessionId);
+
+  store.setState(validPayload.sessionId, {
+    roadId: "road-b",
+    roadType: "secondary",
+    direction: "forward",
+    confidence: 0.9,
+  });
+  store.registerMatchMiss(validPayload.sessionId);
+
+  expect(store.getState(validPayload.sessionId)).toMatchObject({
+    roadId: "road-b",
+    confidence: 0.9,
+  });
+});

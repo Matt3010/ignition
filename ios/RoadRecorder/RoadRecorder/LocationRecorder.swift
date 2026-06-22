@@ -194,6 +194,7 @@ final class LocationRecorder: NSObject, ObservableObject {
             return
         }
         guard shouldSend(location) else { return }
+        guard activeSendTask == nil, let backendURL = validatedBackendURL else { return }
 
         lastSentLocation = location
         lastSentAt = Date()
@@ -209,7 +210,6 @@ final class LocationRecorder: NSObject, ObservableObject {
             sessionId: sessionId.uuidString
         )
 
-        guard activeSendTask == nil, let backendURL = validatedBackendURL else { return }
         let requestGeneration = sessionGeneration
         let requestSessionId = sessionId
         let requestToken = UUID()
