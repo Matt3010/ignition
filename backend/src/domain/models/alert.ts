@@ -1,5 +1,6 @@
 export const alertTypes = [
   "fixedSpeedCamera",
+  "averageSpeedCamera",
   "mobileSpeedCamera",
   "redLightCamera",
   "accessControl",
@@ -14,6 +15,7 @@ export const alertTypes = [
 ] as const;
 
 export type AlertType = (typeof alertTypes)[number];
+export type AlertCapability = string;
 export type Direction = "forward" | "backward" | "unknown";
 export type SpeedLimitSource = "explicit" | "implicit" | "unknown";
 export type OperationalStatus = "operational" | "notOperational" | "unknown";
@@ -22,6 +24,9 @@ export type OsmPresenceStatus = "present" | "missingFromLatestImport";
 export interface RoadAlert {
   id: string;
   type: AlertType;
+  subtype?: string | null;
+  capabilities?: AlertCapability[];
+  primaryCapability?: AlertCapability | null;
   latitude: number;
   longitude: number;
   speedLimitKmh: number | null;

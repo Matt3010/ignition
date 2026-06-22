@@ -26,6 +26,9 @@ export const roadContextResponseSchema = z.object({
   alerts: z.array(z.object({
     id: z.string(),
     type: z.enum(alertTypes),
+    subtype: z.string().nullable(),
+    capabilities: z.array(z.string()),
+    primaryCapability: z.string().nullable(),
     distanceMeters: z.number().min(0),
     speedLimitKmh: z.number().int().positive().nullable(),
     speedLimitSource: z.enum(["explicit", "implicit", "unknown"]),

@@ -12,7 +12,7 @@ export class PostgisAlertRepository implements AlertRepository {
     const result = await this.pool.query(
       `
       select
-        id::text, type, latitude, longitude, speed_limit_kmh, speed_limit_source,
+        id::text, type, subtype, capabilities, primary_capability, latitude, longitude, speed_limit_kmh, speed_limit_source,
         direction, bearing, road_id, confidence, active, valid_from, valid_until,
         source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
         osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
@@ -32,6 +32,9 @@ export class PostgisAlertRepository implements AlertRepository {
     return result.rows.map((row) => ({
       id: row.id,
       type: row.type,
+      subtype: row.subtype,
+      capabilities: row.capabilities ?? [],
+      primaryCapability: row.primary_capability,
       latitude: Number(row.latitude),
       longitude: Number(row.longitude),
       speedLimitKmh: row.speed_limit_kmh === null ? null : Number(row.speed_limit_kmh),
@@ -127,22 +130,25 @@ export class PostgisAlertRepository implements AlertRepository {
       await executor.query(
         `
         insert into road_alerts (
-          id, type, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source,
+          id, type, subtype, capabilities, primary_capability, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source,
           direction, bearing, road_id, confidence, active, valid_from, valid_until,
           source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
           osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
           operational_status, status_reason, direction_bearings, osm_presence_status,
           original_osm_ids, created_at, updated_at
         ) values (
-          $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326), $5, $6,
-          $7, $8, $9, $10, $11, $12, $13,
-          $14, $15, $16, $17, $18, $19,
-          $20, $21, $22, $23::jsonb, $24, $25,
-          $26, $27, $28::double precision[], $29,
-          $30::text[], now(), now()
+          $1, $2, $3, $4::text[], $5, $6, $7, ST_SetSRID(ST_MakePoint($7, $6), 4326), $8, $9,
+          $10, $11, $12, $13, $14, $15, $16,
+          $17, $18, $19, $20, $21, $22,
+          $23, $24, $25, $26::jsonb, $27, $28,
+          $29, $30, $31::double precision[], $32,
+          $33::text[], now(), now()
         )
         on conflict (id) do update set
           type = excluded.type,
+          subtype = excluded.subtype,
+          capabilities = excluded.capabilities,
+          primary_capability = excluded.primary_capability,
           latitude = excluded.latitude,
           longitude = excluded.longitude,
           geometry = excluded.geometry,
@@ -175,16 +181,15 @@ export class PostgisAlertRepository implements AlertRepository {
           updated_at = now()
         `,
         [
-          alert.id, alert.type, alert.latitude, alert.longitude,
-          alert.speedLimitKmh, alert.speedLimitSource, alert.direction, alert.bearing,
-          alert.roadId, alert.confidence, alert.active, alert.validFrom, alert.validUntil,
-          alert.source, alert.osmType ?? null, alert.osmId ?? null, alert.osmRelationId ?? null,
-          alert.osmVersion ?? null, alert.osmTimestamp ?? null, alert.osmChangeset ?? null,
-          alert.osmUser ?? null, alert.osmUid ?? null, JSON.stringify(alert.sourceTags ?? {}),
-          alert.fixme ?? null, alert.positionApproximate ?? false,
+          alert.id, alert.type, alert.subtype ?? null, alert.capabilities ?? [], alert.primaryCapability ?? null,
+          alert.latitude, alert.longitude, alert.speedLimitKmh, alert.speedLimitSource,
+          alert.direction, alert.bearing, alert.roadId, alert.confidence, alert.active,
+          alert.validFrom, alert.validUntil, alert.source, alert.osmType ?? null, alert.osmId ?? null,
+          alert.osmRelationId ?? null, alert.osmVersion ?? null, alert.osmTimestamp ?? null,
+          alert.osmChangeset ?? null, alert.osmUser ?? null, alert.osmUid ?? null,
+          JSON.stringify(alert.sourceTags ?? {}), alert.fixme ?? null, alert.positionApproximate ?? false,
           alert.operationalStatus ?? "unknown", alert.statusReason ?? alert.fixme ?? null,
-          alert.directionBearings ?? [], alert.osmPresenceStatus ?? "present",
-          alert.originalOsmIds ?? [],
+          alert.directionBearings ?? [], alert.osmPresenceStatus ?? "present", alert.originalOsmIds ?? [],
         ],
       );
     }

@@ -54,6 +54,9 @@ export class GetRoadContextUseCase {
     }).map((alert) => ({
       id: alert.id,
       type: alert.type,
+      subtype: alert.subtype ?? null,
+      capabilities: alert.capabilities ?? [],
+      primaryCapability: alert.primaryCapability ?? null,
       distanceMeters: roundMeters(alert.distanceMeters),
       speedLimitKmh: alert.speedLimitKmh,
       speedLimitSource: alert.speedLimitSource,

@@ -115,12 +115,15 @@ function alertFromRelation(
   const tags = { ...(deviceNode?.tags ?? {}), ...relation.tags };
   const effectiveTags = normalizeLifecycleTags(tags);
   const bearing = relationBearing(fromNode, deviceNode, toNode);
-  const type = alertTypeFromTags(effectiveTags);
-  if (!type) return null;
+  const classification = alertClassificationFromTags(effectiveTags);
+  if (!classification) return null;
   return buildAlert({
     osmType: "relation",
     osmId: relation.id,
-    type,
+    type: classification.type,
+    subtype: classification.subtype,
+    capabilities: classification.capabilities,
+    primaryCapability: classification.primaryCapability,
     latitude: position.latitude,
     longitude: position.longitude,
     tags,
@@ -153,12 +156,15 @@ function alertFromElement(
   attributes: Record<string, string>,
 ): RoadAlert | null {
   const effectiveTags = normalizeLifecycleTags(tags);
-  const enforcementType = alertTypeFromTags(effectiveTags);
-  if (enforcementType || isSpeedCamera(effectiveTags)) {
+  const classification = alertClassificationFromTags(effectiveTags) ?? (isSpeedCamera(effectiveTags) ? { type: "fixedSpeedCamera" as const, subtype: "fixed", capabilities: ["maxspeed"], primaryCapability: "maxspeed" } : null);
+  if (classification) {
     return buildAlert({
       osmType,
       osmId,
-      type: enforcementType ?? "fixedSpeedCamera",
+      type: classification.type,
+      subtype: classification.subtype,
+      capabilities: classification.capabilities,
+      primaryCapability: classification.primaryCapability,
       latitude,
       longitude,
       tags,
@@ -223,6 +229,9 @@ function buildAlert(input: {
   osmType: string;
   osmId: string;
   type: RoadAlert["type"];
+  subtype?: string | null;
+  capabilities?: string[];
+  primaryCapability?: string | null;
   latitude: number;
   longitude: number;
   tags: Record<string, string>;
@@ -242,8 +251,11 @@ function buildAlert(input: {
     effectiveTags.maxspeed ?? effectiveTags["maxspeed:forward"] ?? effectiveTags["maxspeed:backward"],
   );
   return {
-    id: deterministicUuid(`${input.source}:${input.osmType}:${input.osmId}:${input.type}`),
+    id: deterministicUuid(`${input.source}:${input.osmType}:${input.osmId}:${stableIdentityType(input.type)}`),
     type: input.type,
+    subtype: input.subtype ?? null,
+    capabilities: input.capabilities ?? [],
+    primaryCapability: input.primaryCapability ?? null,
     latitude: input.latitude,
     longitude: input.longitude,
     speedLimitKmh: maxspeed.value,
@@ -273,6 +285,12 @@ function buildAlert(input: {
     osmPresenceStatus: "present",
     originalOsmIds: input.originalOsmIds ?? [`${input.osmType}/${input.osmId}`],
   };
+}
+
+function stableIdentityType(type: RoadAlert["type"]): RoadAlert["type"] {
+  // average_speed was historically stored as fixedSpeedCamera; keep the UUID stable so the
+  // next import upgrades the existing row instead of leaving an inactive duplicate behind.
+  return type === "averageSpeedCamera" ? "fixedSpeedCamera" : type;
 }
 
 function parseNodes(xml: string): Map<string, OsmNode> {
@@ -521,27 +539,46 @@ function isRedLightCamera(tags: Record<string, string>): boolean {
   return tags.traffic_signals?.trim().toLowerCase() === "red_light_camera";
 }
 
-function alertTypeFromTags(tags: Record<string, string>): RoadAlert["type"] | null {
-  if (isRedLightCamera(tags)) return "redLightCamera";
-  return enforcementAlertType(tags.enforcement);
+interface AlertClassification {
+  type: RoadAlert["type"];
+  subtype: string | null;
+  capabilities: string[];
+  primaryCapability: string | null;
 }
 
-function enforcementAlertType(value: string | undefined): RoadAlert["type"] | null {
-  if (!value) return null;
-  switch (value.trim().toLowerCase()) {
-    case "maxspeed":
+function alertClassificationFromTags(tags: Record<string, string>): AlertClassification | null {
+  const capabilities = parseEnforcementCapabilities(tags.enforcement);
+  if (isRedLightCamera(tags) && !capabilities.includes("traffic_signals")) {
+    capabilities.push("traffic_signals");
+  }
+  if (capabilities.length === 0) return null;
+
+  const primaryCapability = selectPrimaryCapability(capabilities);
+  switch (primaryCapability) {
     case "average_speed":
-      return "fixedSpeedCamera";
+      return { type: "averageSpeedCamera", subtype: "average", capabilities, primaryCapability };
+    case "maxspeed":
+      return { type: "fixedSpeedCamera", subtype: "fixed", capabilities, primaryCapability };
     case "traffic_signals":
-      return "redLightCamera";
+      return { type: "redLightCamera", subtype: "red_light", capabilities, primaryCapability };
     case "access":
-      return "accessControl";
+      return { type: "accessControl", subtype: "access", capabilities, primaryCapability };
     case "maxweight":
     case "weigh_station":
-      return "weightControl";
+      return { type: "weightControl", subtype: primaryCapability, capabilities, primaryCapability };
     default:
-      return "genericEnforcement";
+      return { type: "genericEnforcement", subtype: primaryCapability, capabilities, primaryCapability };
   }
+}
+
+function parseEnforcementCapabilities(value: string | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(value.split(";").map((item) => item.trim().toLowerCase()).filter(Boolean))];
+}
+
+function selectPrimaryCapability(capabilities: string[]): string {
+  const priority = ["average_speed", "maxspeed", "traffic_signals", "access", "maxweight", "weigh_station"];
+  return priority.find((capability) => capabilities.includes(capability)) ?? capabilities[0];
 }
 
 function isRoadWorks(tags: Record<string, string>): boolean {

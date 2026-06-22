@@ -98,3 +98,53 @@ describe("additional OSM enforcement coverage", () => {
     expect(alerts[0]).toMatchObject({ osmVersion: 7, osmChangeset: "123", osmUser: "mapper", osmUid: "456", positionApproximate: true });
   });
 });
+
+describe("OSM enforcement capabilities", () => {
+  it("preserves multiple enforcement capabilities and selects a stable primary capability", () => {
+    const xml = `<osm version="0.6">
+      <node id="30" lat="45.03" lon="11.03">
+        <tag k="enforcement" v="maxspeed;traffic_signals"/>
+        <tag k="maxspeed" v="70"/>
+      </node>
+    </osm>`;
+    const [alert] = parseOsmAlerts(xml).alerts;
+    expect(alert).toMatchObject({
+      type: "fixedSpeedCamera",
+      subtype: "fixed",
+      capabilities: ["maxspeed", "traffic_signals"],
+      primaryCapability: "maxspeed",
+      speedLimitKmh: 70,
+    });
+  });
+
+  it("keeps average-speed enforcement distinct from fixed cameras", () => {
+    const xml = `<osm version="0.6">
+      <relation id="31">
+        <member type="node" ref="32" role="device"/>
+        <tag k="type" v="enforcement"/>
+        <tag k="enforcement" v="average_speed"/>
+      </relation>
+      <node id="32" lat="45.04" lon="11.04"/>
+    </osm>`;
+    const [alert] = parseOsmAlerts(xml).alerts;
+    expect(alert).toMatchObject({
+      type: "averageSpeedCamera",
+      subtype: "average",
+      capabilities: ["average_speed"],
+      primaryCapability: "average_speed",
+    });
+  });
+
+  it("keeps unknown enforcement values as capabilities", () => {
+    const xml = `<osm version="0.6">
+      <node id="33" lat="45.05" lon="11.05"><tag k="enforcement" v="maxheight;check"/></node>
+    </osm>`;
+    const [alert] = parseOsmAlerts(xml).alerts;
+    expect(alert).toMatchObject({
+      type: "genericEnforcement",
+      subtype: "maxheight",
+      capabilities: ["maxheight", "check"],
+      primaryCapability: "maxheight",
+    });
+  });
+});

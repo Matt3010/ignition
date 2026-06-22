@@ -56,6 +56,9 @@ struct RoadContextResponse: Codable {
 struct RoadAlert: Codable {
     let id: String
     let type: String
+    let subtype: String?
+    let capabilities: [String]
+    let primaryCapability: String?
     let distanceMeters: Double
     let speedLimitKmh: Int?
     let speedLimitSource: String?
@@ -184,7 +187,8 @@ enum DriveEventFormatter {
             } ?? ""
             let operationalStatus = alert.operationalStatus.map { ", stato \(operationalStatusText($0))" } ?? ""
             let statusReason = alert.statusReason.map { ", motivo: \($0)" } ?? ""
-            return "alert \(alertTypeText(alert.type)) a \(Int(alert.distanceMeters.rounded())) m\(limit)\(operationalStatus)\(statusReason)"
+            let capabilities = alert.capabilities.isEmpty ? "" : ", controlli: \(alert.capabilities.map(capabilityText).joined(separator: ", "))"
+            return "alert \(alertTypeText(alert.type)) a \(Int(alert.distanceMeters.rounded())) m\(limit)\(capabilities)\(operationalStatus)\(statusReason)"
         } ?? "nessun alert vicino"
 
         return "\(speed), \(roadLabel), \(limitLabel), \(speedStatus), \(nearestAlert)"
@@ -210,6 +214,7 @@ enum DriveEventFormatter {
     static func alertTypeText(_ type: String) -> String {
         switch type {
         case "fixedSpeedCamera": return "autovelox fisso"
+        case "averageSpeedCamera": return "controllo velocita media"
         case "mobileSpeedCamera": return "autovelox mobile"
         case "redLightCamera": return "photored"
         case "accessControl": return "controllo accesso/ZTL"
@@ -222,6 +227,21 @@ enum DriveEventFormatter {
         case "roadClosure": return "strada chiusa"
         case "information": return "informazione"
         default: return type
+        }
+    }
+
+    static func capabilityText(_ capability: String) -> String {
+        switch capability {
+        case "maxspeed": return "velocita"
+        case "average_speed": return "velocita media"
+        case "traffic_signals": return "semaforo rosso"
+        case "access": return "accesso"
+        case "maxweight": return "peso massimo"
+        case "weigh_station": return "pesatura"
+        case "maxheight": return "altezza massima"
+        case "mindistance": return "distanza minima"
+        case "check": return "controllo"
+        default: return capability
         }
     }
 

@@ -10,5 +10,6 @@
     <file url="file://$PROJECT_DIR$/backend/migrations/0006_alert_classification_and_presence.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/backend/migrations/0007_backend_consistency.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/backend/migrations/0008_operational_hardening.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0009_alert_capabilities.sql" dialect="GenericSQL" />
   </component>
 </project>
