@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { alertTypes } from "../../domain/models/alert.js";
 import type { AlertRepository } from "../../application/ports/alert-repository.js";
 import type { RoadContextProvider } from "../../application/ports/road-context-provider.js";
+import { APP_VERSION } from "../../config/app-version.js";
 
 interface DependencyHealth {
   database: "up" | "down";
@@ -53,7 +54,7 @@ export async function registerSystemRoutes(
   });
 
   app.get("/api/v1/config", async () => ({
-    apiVersion: app.config.API_VERSION,
+    apiVersion: APP_VERSION,
     minSuggestedIntervalMs: app.config.MIN_CLIENT_INTERVAL_MS,
     maxRecommendedAccuracyMeters: app.config.MAX_GPS_ACCURACY_METERS,
     supportedAlertTypes: alertTypes,

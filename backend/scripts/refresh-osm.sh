@@ -10,8 +10,6 @@ VALHALLA_STAGING_BUILD_HOST_TILE_DIR="${VALHALLA_STAGING_BUILD_HOST_TILE_DIR:-${
 VALHALLA_PREVIOUS_TILE_DIR="${VALHALLA_PREVIOUS_TILE_DIR:-${VALHALLA_TILE_DIR}.previous}"
 VALHALLA_FAILED_TILE_DIR="${VALHALLA_FAILED_TILE_DIR:-${VALHALLA_TILE_DIR}.failed}"
 VALHALLA_CONTAINER_NAME="${VALHALLA_CONTAINER_NAME:-road-context-valhalla}"
-OSM_REFRESH_RESTART_VALHALLA="${OSM_REFRESH_RESTART_VALHALLA:-true}"
-OSM_REFRESH_IMPORT_ALERTS="${OSM_REFRESH_IMPORT_ALERTS:-true}"
 OSM_REFRESH_LOCK_TIMEOUT_SECONDS="${OSM_REFRESH_LOCK_TIMEOUT_SECONDS:-3600}"
 OSM_REFRESH_LOCK_STALE_SECONDS="${OSM_REFRESH_LOCK_STALE_SECONDS:-7200}"
 VALHALLA_HEALTH_URL="${VALHALLA_HEALTH_URL:-http://127.0.0.1:8002/status}"
@@ -70,10 +68,6 @@ acquire_lock() {
 }
 
 require_container_control() {
-  if [[ "$OSM_REFRESH_RESTART_VALHALLA" != "true" ]]; then
-    echo '{"event":"osm_refresh_invalid_configuration","reason":"OSM_REFRESH_RESTART_VALHALLA must be true for an atomic tile switch"}' >&2
-    exit 64
-  fi
   docker inspect "$VALHALLA_CONTAINER_NAME" >/dev/null
 }
 
@@ -191,13 +185,11 @@ if ! wait_for_valhalla_health; then
   exit 1
 fi
 
-if [[ "$OSM_REFRESH_IMPORT_ALERTS" == "true" ]]; then
-  if ! npm run import:osm-alerts; then
-    stop_valhalla || true
-    rollback_tiles
-    echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"alert_import\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
-    exit 1
-  fi
+if ! npm run import:osm-alerts; then
+  stop_valhalla || true
+  rollback_tiles
+  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"alert_import\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
+  exit 1
 fi
 
 rm -rf "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"

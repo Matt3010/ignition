@@ -300,9 +300,8 @@ Note Raspberry:
 
 ## Variabili Principali
 
-Vedere `.env.example`. Le più importanti:
+Vedere `.env.example`. Le più importanti (il provider reale, host del container, riavvio Valhalla e import alert sono ora fissi e non configurabili):
 
-- `ROAD_CONTEXT_PROVIDER=valhalla` per flusso reale. `mock` e consentito solo in test/non-produzione.
 - `DATABASE_URL`
 - `VALHALLA_BASE_URL`
 - `VALHALLA_TIMEOUT_MS`
@@ -321,7 +320,6 @@ Vedere `.env.example`. Le più importanti:
 - `VALHALLA_TILE_DIR`
 - `OSM_REFRESH_INTERVAL_SECONDS`
 - `OSM_REFRESH_RUN_ON_START`
-- `OSM_REFRESH_RESTART_VALHALLA`
 
 ## Limiti Noti MVP
 

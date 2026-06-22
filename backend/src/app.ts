@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
 import { randomUUID } from "node:crypto";
 import { loadConfig, type AppConfig } from "./config/env.js";
+import { APP_VERSION } from "./config/app-version.js";
 import type { AlertRepository } from "./application/ports/alert-repository.js";
 import { GetRoadContextUseCase } from "./application/use-cases/get-road-context.use-case.js";
 import { SessionTraceStore } from "./domain/services/session-trace.js";
@@ -55,7 +56,7 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
     openapi: {
       info: {
         title: "Motorcycle Road Context API",
-        version: config.API_VERSION,
+        version: APP_VERSION,
       },
     },
   });
