@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import type { Direction, RoadAlert } from "../../domain/models/alert.js";
-import { initialBearing, normalizeCourse } from "../../domain/services/geo.js";
+import {
+  initialBearing,
+  normalizeCourse,
+} from "../../domain/services/geo.js";
 import { parseMaxspeed } from "../../domain/services/maxspeed.js";
 
 interface OsmNode {
@@ -8,12 +11,14 @@ interface OsmNode {
   latitude: number;
   longitude: number;
   tags: Record<string, string>;
+  attributes: Record<string, string>;
 }
 
 interface OsmWay {
   id: string;
   nodeRefs: string[];
   tags: Record<string, string>;
+  attributes: Record<string, string>;
 }
 
 interface OsmRelationMember {
@@ -26,6 +31,7 @@ interface OsmRelation {
   id: string;
   members: OsmRelationMember[];
   tags: Record<string, string>;
+  attributes: Record<string, string>;
 }
 
 export interface OsmAlertParseResult {
@@ -46,19 +52,35 @@ export function parseOsmAlerts(xml: string, source = "osm"): OsmAlertParseResult
   const ways = parseWays(xml);
   const waysById = new Map(ways.map((way) => [way.id, way]));
   const relations = parseRelations(xml);
-  const speedCameraNodesCoveredByRelations = enforcementDeviceNodeIds(relations);
   const alerts: RoadAlert[] = [];
 
   for (const node of nodes.values()) {
-    if (speedCameraNodesCoveredByRelations.has(node.id) && isSpeedCamera(node.tags)) continue;
-    const alert = alertFromElement("node", node.id, node.latitude, node.longitude, node.tags, source, null);
+    const alert = alertFromElement(
+      "node",
+      node.id,
+      node.latitude,
+      node.longitude,
+      node.tags,
+      source,
+      null,
+      node.attributes,
+    );
     if (alert) alerts.push(alert);
   }
 
   for (const way of ways) {
     const center = wayCenter(way, nodes);
     if (!center) continue;
-    const alert = alertFromElement("way", way.id, center.latitude, center.longitude, way.tags, source, `way-${way.id}`);
+    const alert = alertFromElement(
+      "way",
+      way.id,
+      center.latitude,
+      center.longitude,
+      way.tags,
+      source,
+      `way-${way.id}`,
+      way.attributes,
+    );
     if (alert) alerts.push(alert);
   }
 
@@ -74,17 +96,6 @@ export function parseOsmAlerts(xml: string, source = "osm"): OsmAlertParseResult
   };
 }
 
-function enforcementDeviceNodeIds(relations: OsmRelation[]): Set<string> {
-  const ids = new Set<string>();
-  for (const relation of relations) {
-    if (relation.tags.enforcement !== "maxspeed") continue;
-    for (const member of relation.members) {
-      if (member.type === "node" && (member.role === "device" || member.role === "via")) ids.add(member.ref);
-    }
-  }
-  return ids;
-}
-
 function alertFromRelation(
   relation: OsmRelation,
   nodes: Map<string, OsmNode>,
@@ -92,9 +103,14 @@ function alertFromRelation(
   source: string,
 ): RoadAlert | null {
   if (relation.tags.enforcement !== "maxspeed") return null;
-  const deviceNode = relationNode(relation, nodes, "device") ?? relationNode(relation, nodes, "via");
-  const fromNode = relationNode(relation, nodes, "from") ?? relationWayEndpoint(relation, nodes, ways, "from", deviceNode);
-  const toNode = relationNode(relation, nodes, "to") ?? relationWayEndpoint(relation, nodes, ways, "to", deviceNode);
+  const deviceNode =
+    relationNode(relation, nodes, "device") ?? relationNode(relation, nodes, "via");
+  const fromNode =
+    relationNode(relation, nodes, "from") ??
+    relationWayEndpoint(relation, nodes, ways, "from", deviceNode);
+  const toNode =
+    relationNode(relation, nodes, "to") ??
+    relationWayEndpoint(relation, nodes, ways, "to", deviceNode);
   const node = deviceNode ?? fromNode ?? toNode;
   if (!node) return null;
   const bearing = relationBearing(fromNode, deviceNode, toNode);
@@ -109,7 +125,14 @@ function alertFromRelation(
     roadId: relationRoadId(relation),
     direction: bearing === null ? "unknown" : "forward",
     bearing,
-    confidence: bearing === null ? 0.9 : 0.95,
+    confidence: calculateOsmConfidence(relation.tags, {
+      hasRoad: relationRoadId(relation) !== null,
+      hasBearing: bearing !== null,
+      relation: true,
+      attributes: relation.attributes,
+    }),
+    osmRelationId: relation.id,
+    attributes: relation.attributes,
   });
 }
 
@@ -121,6 +144,7 @@ function alertFromElement(
   tags: Record<string, string>,
   source: string,
   roadId: string | null,
+  attributes: Record<string, string>,
 ): RoadAlert | null {
   if (isSpeedCamera(tags)) {
     return buildAlert({
@@ -132,7 +156,13 @@ function alertFromElement(
       tags,
       source,
       roadId,
-      confidence: 0.88,
+      confidence: calculateOsmConfidence(tags, {
+        hasRoad: roadId !== null,
+        hasBearing: parseBearing(tags) !== null,
+        relation: false,
+        attributes,
+      }),
+      attributes,
     });
   }
   if (isRoadWorks(tags)) {
@@ -145,7 +175,14 @@ function alertFromElement(
       tags,
       source,
       roadId,
-      confidence: 0.75,
+      confidence: calculateOsmConfidence(tags, {
+        hasRoad: roadId !== null,
+        hasBearing: parseBearing(tags) !== null,
+        relation: false,
+        attributes,
+        base: 0.75,
+      }),
+      attributes,
     });
   }
   if (isRoadHazard(tags)) {
@@ -158,7 +195,14 @@ function alertFromElement(
       tags,
       source,
       roadId,
-      confidence: 0.72,
+      confidence: calculateOsmConfidence(tags, {
+        hasRoad: roadId !== null,
+        hasBearing: parseBearing(tags) !== null,
+        relation: false,
+        attributes,
+        base: 0.72,
+      }),
+      attributes,
     });
   }
   return null;
@@ -176,9 +220,13 @@ function buildAlert(input: {
   direction?: Direction;
   bearing?: number | null;
   confidence: number;
+  osmRelationId?: string | null;
+  attributes?: Record<string, string>;
 }): RoadAlert {
   const now = new Date();
-  const maxspeed = parseMaxspeed(input.tags.maxspeed ?? input.tags["maxspeed:forward"] ?? input.tags["maxspeed:backward"]);
+  const maxspeed = parseMaxspeed(
+    input.tags.maxspeed ?? input.tags["maxspeed:forward"] ?? input.tags["maxspeed:backward"],
+  );
   return {
     id: deterministicUuid(`${input.source}:${input.osmType}:${input.osmId}:${input.type}`),
     type: input.type,
@@ -194,7 +242,16 @@ function buildAlert(input: {
     validFrom: null,
     validUntil: null,
     source: input.source,
-    createdAt: now,
+    osmType: input.osmType,
+    osmId: input.osmId,
+    osmRelationId: input.osmRelationId ?? null,
+    sourceTags: input.tags,
+    fixme: input.tags.fixme ?? null,
+    positionApproximate: isApproximateFixme(input.tags.fixme),
+    operationalStatus: isNegativeFixme(input.tags.fixme) ? "notOperational" : "unknown",
+    statusReason: input.tags.fixme ?? null,
+    originalOsmIds: [`${input.osmType}/${input.osmId}`],
+    createdAt: parseOsmDate(input.attributes?.timestamp) ?? now,
     updatedAt: now,
   };
 }
@@ -212,6 +269,7 @@ function parseNodes(xml: string): Map<string, OsmNode> {
       latitude,
       longitude,
       tags: parseTags(match[2] ?? ""),
+      attributes: attrs,
     });
   }
   return nodes;
@@ -255,6 +313,7 @@ function parseWays(xml: string): OsmWay[] {
         .map((item) => parseAttributes(item[1]).ref)
         .filter((ref): ref is string => Boolean(ref)),
       tags: parseTags(match[2]),
+      attributes: attrs,
     });
   }
   return ways;
@@ -272,6 +331,7 @@ function parseRelations(xml: string): OsmRelation[] {
         return { type: member.type ?? "", ref: member.ref ?? "", role: member.role ?? "" };
       }),
       tags: parseTags(match[2]),
+      attributes: attrs,
     });
   }
   return relations;
@@ -296,7 +356,9 @@ function relationWayEndpoint(
   const member = relation.members.find((item) => item.type === "way" && item.role === role);
   const way = member ? ways.get(member.ref) : null;
   if (!way) return null;
-  const wayNodes = way.nodeRefs.map((ref) => nodes.get(ref)).filter((node): node is OsmNode => Boolean(node));
+  const wayNodes = way.nodeRefs
+    .map((ref) => nodes.get(ref))
+    .filter((node): node is OsmNode => Boolean(node));
   if (!wayNodes.length) return null;
   if (!deviceNode) return role === "from" ? wayNodes.at(-1)! : wayNodes[0];
   return nearestNode(wayNodes, deviceNode);
@@ -318,10 +380,20 @@ function relationBearing(
     return initialBearing(fromNode.latitude, fromNode.longitude, toNode.latitude, toNode.longitude);
   }
   if (fromNode && deviceNode) {
-    return initialBearing(fromNode.latitude, fromNode.longitude, deviceNode.latitude, deviceNode.longitude);
+    return initialBearing(
+      fromNode.latitude,
+      fromNode.longitude,
+      deviceNode.latitude,
+      deviceNode.longitude,
+    );
   }
   if (deviceNode && toNode) {
-    return initialBearing(deviceNode.latitude, deviceNode.longitude, toNode.latitude, toNode.longitude);
+    return initialBearing(
+      deviceNode.latitude,
+      deviceNode.longitude,
+      toNode.latitude,
+      toNode.longitude,
+    );
   }
   return null;
 }
@@ -364,8 +436,13 @@ function decodeXml(input: string): string {
     .replaceAll("&amp;", "&");
 }
 
-function wayCenter(way: OsmWay, nodes: Map<string, OsmNode>): { latitude: number; longitude: number } | null {
-  const wayNodes = way.nodeRefs.map((ref) => nodes.get(ref)).filter((node): node is OsmNode => Boolean(node));
+function wayCenter(
+  way: OsmWay,
+  nodes: Map<string, OsmNode>,
+): { latitude: number; longitude: number } | null {
+  const wayNodes = way.nodeRefs
+    .map((ref) => nodes.get(ref))
+    .filter((node): node is OsmNode => Boolean(node));
   if (!wayNodes.length) return null;
   return {
     latitude: wayNodes.reduce((sum, node) => sum + node.latitude, 0) / wayNodes.length,
@@ -410,10 +487,72 @@ function deterministicUuid(value: string): string {
 }
 
 function dedupe(alerts: RoadAlert[]): RoadAlert[] {
-  const seen = new Map<string, RoadAlert>();
+  // Lossless policy: only collapse records with the exact same deterministic ID.
+  // Geographically close OSM objects are intentionally preserved because they may
+  // represent separate devices, opposite directions, or incomplete mapper data.
+  const byIdentity = new Map<string, RoadAlert>();
   for (const alert of alerts) {
-    const existing = seen.get(alert.id);
-    if (!existing || alert.confidence >= existing.confidence) seen.set(alert.id, alert);
+    const existing = byIdentity.get(alert.id);
+    if (!existing || alert.confidence >= existing.confidence) byIdentity.set(alert.id, alert);
   }
-  return [...seen.values()];
+  return [...byIdentity.values()];
+}
+
+function calculateOsmConfidence(
+  tags: Record<string, string>,
+  input: {
+    hasRoad: boolean;
+    hasBearing: boolean;
+    relation: boolean;
+    attributes: Record<string, string>;
+    base?: number;
+  },
+): number {
+  let confidence = input.base ?? 0.72;
+  if (input.relation) confidence += 0.12;
+  if (input.hasRoad) confidence += 0.08;
+  if (input.hasBearing) confidence += 0.08;
+  if (
+    parseMaxspeed(tags.maxspeed ?? tags["maxspeed:forward"] ?? tags["maxspeed:backward"]).value !==
+    null
+  )
+    confidence += 0.05;
+  const version = Number(input.attributes.version);
+  if (Number.isFinite(version) && version > 1) confidence += Math.min(0.05, version * 0.005);
+  const timestamp = parseOsmDate(input.attributes.timestamp);
+  if (timestamp) {
+    const ageYears = (Date.now() - timestamp.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    if (ageYears > 8) confidence -= 0.12;
+    else if (ageYears > 4) confidence -= 0.06;
+  }
+  if (isApproximateFixme(tags.fixme)) confidence -= 0.25;
+  else if (tags.fixme) confidence -= 0.12;
+  return Math.max(0, Math.min(1, Number(confidence.toFixed(3))));
+}
+
+function isNegativeFixme(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return [
+    "no trace",
+    "not found",
+    "does not exist",
+    "probably removed",
+    "remove this",
+    "removed",
+  ].some((term) => normalized.includes(term));
+}
+
+function isApproximateFixme(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return ["approx position", "approximate", "position uncertain", "uncertain position"].some(
+    (term) => normalized.includes(term),
+  );
+}
+
+function parseOsmDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }

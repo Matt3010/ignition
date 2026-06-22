@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/backend/docker/postgres/init.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0001_init.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0002_import_metadata.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0003_speed_limit_source.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0004_osm_alert_quality.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/migrations/0005_alert_operational_status.sql" dialect="GenericSQL" />
+  </component>
+</project>

@@ -60,8 +60,12 @@ export class GetRoadContextUseCase {
       directionToleranceDegrees: this.config.ALERT_DIRECTION_TOLERANCE_DEGREES,
       unassignedMaxDistanceMeters: this.config.ALERT_UNASSIGNED_RADIUS_METERS,
       unmatchedMaxDistanceMeters: this.config.ALERT_UNMATCHED_RADIUS_METERS,
+      userLatitude: sample.latitude,
+      userLongitude: sample.longitude,
+      aheadToleranceDegrees: this.config.ALERT_AHEAD_TOLERANCE_DEGREES,
+      minConfidence: this.config.ALERT_MIN_CONFIDENCE,
       now: new Date(sample.timestamp),
-      limit: 10,
+      limit: this.config.ALERT_RESULT_LIMIT,
     }).map((alert) => ({
       id: alert.id,
       type: alert.type,
@@ -72,6 +76,8 @@ export class GetRoadContextUseCase {
       longitude: alert.longitude,
       direction: alert.direction ?? "unknown",
       confidence: alert.confidence,
+      operationalStatus: alert.operationalStatus ?? "unknown",
+      statusReason: alert.statusReason ?? alert.fixme ?? null,
     }));
 
     const response: RoadContextResponse = {

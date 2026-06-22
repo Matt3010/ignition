@@ -12,6 +12,7 @@ export const alertTypes = [
 export type AlertType = (typeof alertTypes)[number];
 export type Direction = "forward" | "backward" | "unknown";
 export type SpeedLimitSource = "explicit" | "implicit" | "unknown";
+export type OperationalStatus = "operational" | "notOperational" | "unknown";
 
 export interface RoadAlert {
   id: string;
@@ -28,6 +29,15 @@ export interface RoadAlert {
   validFrom: Date | null;
   validUntil: Date | null;
   source: string;
+  osmType?: string | null;
+  osmId?: string | null;
+  osmRelationId?: string | null;
+  sourceTags?: Record<string, string> | null;
+  fixme?: string | null;
+  positionApproximate?: boolean;
+  operationalStatus?: OperationalStatus;
+  statusReason?: string | null;
+  originalOsmIds?: string[];
   distanceMeters?: number;
   createdAt?: Date;
   updatedAt?: Date;

@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="real-overpass-campodarsego">
+  <bounds minlat="45.368815" minlon="11.7265088" maxlat="45.6135417" maxlon="12.0723982"/>
+  <node id="221050410" lat="45.3907745" lon="11.9258044" version="29" timestamp="2024-12-05T21:25:01Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="471611082" lat="45.4149785" lon="11.8340811" version="6" timestamp="2023-10-10T09:55:36Z">
+    <tag k="enforcement" v="traffic_signals"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="man_made" v="surveillance"/>
+    <tag k="surveillance" v="public"/>
+  </node>
+  <node id="1461483831" lat="45.509531" lon="11.9340545" version="4" timestamp="2024-11-15T21:04:33Z">
+    <tag k="direction" v="20"/>
+    <tag k="enforcement" v="maxspeed"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="1801581130" lat="45.5848345" lon="11.9569505" version="4" timestamp="2024-12-05T21:46:03Z">
+    <tag k="direction" v="0"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="1905694524" lat="45.5812798" lon="11.870209" version="1" timestamp="2012-09-08T15:05:45Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="1960888364" lat="45.5560299" lon="11.9503328" version="2" timestamp="2024-12-05T21:40:37Z">
+    <tag k="direction" v="5"/>
+    <tag k="enforcement" v="maxspeed"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="1973976734" lat="45.4817434" lon="11.9220056" version="3" timestamp="2024-11-15T20:53:22Z">
+    <tag k="direction" v="200"/>
+    <tag k="enforcement" v="maxspeed"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="1973976748" lat="45.5655027" lon="11.930653" version="2" timestamp="2014-08-12T12:36:50Z">
+    <tag k="enforcement" v="traffic_signals"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2063928303" lat="45.4473802" lon="11.9285974" version="3" timestamp="2024-12-05T21:33:21Z">
+    <tag k="direction" v="150"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="2195569226" lat="45.5812524" lon="11.8701912" version="2" timestamp="2015-10-16T22:30:28Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2373194323" lat="45.5845644" lon="11.8526557" version="1" timestamp="2013-07-04T11:16:45Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2456370147" lat="45.5347842" lon="11.9438373" version="2" timestamp="2023-10-06T09:09:31Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2456370157" lat="45.5362514" lon="11.9358905" version="3" timestamp="2023-10-06T09:09:31Z">
+    <tag k="fixme" v="no trace of a speed camera here"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2460493400" lat="45.5399711" lon="11.8785732" version="3" timestamp="2024-04-30T11:00:13Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2460493401" lat="45.5953884" lon="11.9565598" version="1" timestamp="2013-09-16T15:05:58Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2466324564" lat="45.5475642" lon="11.8741648" version="2" timestamp="2024-04-30T11:00:13Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2516464507" lat="45.5878738" lon="11.8061483" version="1" timestamp="2013-11-01T17:50:15Z">
+    <tag k="enforcement" v="traffic_signals"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2516464515" lat="45.5879361" lon="11.8063291" version="2" timestamp="2021-12-12T16:44:09Z">
+    <tag k="enforcement" v="traffic_signals"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2516464519" lat="45.5879833" lon="11.8060454" version="1" timestamp="2013-11-01T17:50:15Z">
+    <tag k="enforcement" v="traffic_signals"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2516464523" lat="45.5881501" lon="11.806134" version="1" timestamp="2013-11-01T17:50:15Z">
+    <tag k="enforcement" v="traffic_signals"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="2516464607" lat="45.6120606" lon="11.7980515" version="4" timestamp="2025-06-19T10:18:20Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="2742213404" lat="45.409058" lon="11.8520352" version="6" timestamp="2024-12-05T20:48:56Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="3073222953" lat="45.4940694" lon="11.7852122" version="1" timestamp="2014-09-12T11:33:28Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="3073222956" lat="45.4993043" lon="11.7950546" version="1" timestamp="2014-09-12T11:33:28Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="3361180206" lat="45.4269995" lon="11.8604236" version="1" timestamp="2015-02-20T08:28:54Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="3838748028" lat="45.5485607" lon="11.8137021" version="1" timestamp="2015-11-16T11:10:13Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="4419082192" lat="45.4391185" lon="11.8663544" version="2" timestamp="2024-12-05T20:55:39Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="4578127811" lat="45.3945891" lon="11.9277221" version="3" timestamp="2020-03-03T15:31:06Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="4883485961" lat="45.478591" lon="11.8456725" version="1" timestamp="2017-05-29T12:06:53Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="5151756048" lat="45.3761778" lon="11.8446376" version="5" timestamp="2021-01-02T19:28:26Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+    <tag k="overtaking:hgv" v="no"/>
+  </node>
+  <node id="5151756051" lat="45.3948551" lon="11.8415886" version="3" timestamp="2020-03-03T15:31:06Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="5373213022" lat="45.5423635" lon="11.8052678" version="1" timestamp="2018-01-30T19:17:17Z">
+    <tag k="direction" v="340"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="5373213023" lat="45.5387314" lon="11.7909681" version="1" timestamp="2018-01-30T19:17:17Z">
+    <tag k="direction" v="340"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="6082886013" lat="45.4645509" lon="11.7827124" version="1" timestamp="2018-11-22T14:51:54Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="6306657631" lat="45.3804984" lon="11.8275344" version="4" timestamp="2020-04-16T13:43:33Z">
+    <tag k="direction" v="75"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="6358908869" lat="45.3983865" lon="11.8718706" version="1" timestamp="2019-03-24T18:53:03Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="6358915678" lat="45.3957139" lon="11.8823223" version="1" timestamp="2019-03-24T18:57:19Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="6359240671" lat="45.4114927" lon="11.8612352" version="1" timestamp="2019-03-24T21:09:07Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="6359240672" lat="45.4116234" lon="11.8619609" version="1" timestamp="2019-03-24T21:09:07Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="8303691039" lat="45.4862316" lon="11.7265088" version="2" timestamp="2025-07-06T14:16:06Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="8303691041" lat="45.4874097" lon="11.7288481" version="1" timestamp="2021-01-08T19:07:53Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="8303691042" lat="45.4876277" lon="11.7315918" version="1" timestamp="2021-01-08T19:07:53Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="8303691043" lat="45.487876" lon="11.7340241" version="2" timestamp="2025-12-24T22:50:18Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="9561986901" lat="45.4976628" lon="12.0723982" version="2" timestamp="2025-10-23T05:40:34Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="9567708170" lat="45.4321339" lon="12.0448358" version="1" timestamp="2022-03-10T06:57:37Z">
+    <tag k="direction" v="90"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="70"/>
+  </node>
+  <node id="10067022828" lat="45.4005888" lon="11.961759" version="1" timestamp="2022-10-01T15:14:24Z">
+    <tag k="direction" v="15"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="130"/>
+    <tag k="source" v="local knowledge"/>
+  </node>
+  <node id="10879117001" lat="45.3981318" lon="12.002942" version="1" timestamp="2023-05-08T15:51:00Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="10959627653" lat="45.4426837" lon="11.8651409" version="2" timestamp="2026-04-18T19:16:34Z">
+    <tag k="direction" v="backward"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="40"/>
+  </node>
+  <node id="11104717839" lat="45.4562776" lon="11.8970589" version="1" timestamp="2023-08-10T12:46:23Z">
+    <tag k="fixme" v="approx position"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="11104717843" lat="45.463726" lon="11.8941171" version="1" timestamp="2023-08-10T12:46:23Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="11226897276" lat="45.5235889" lon="11.8314095" version="1" timestamp="2023-09-29T13:07:06Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="11246516014" lat="45.4115106" lon="11.9385046" version="1" timestamp="2023-10-07T17:57:52Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="11263082233" lat="45.368815" lon="11.8948056" version="3" timestamp="2025-02-23T16:14:19Z">
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="12344732779" lat="45.509158" lon="11.9338063" version="2" timestamp="2024-11-15T21:04:33Z">
+    <tag k="direction" v="205"/>
+    <tag k="enforcement" v="maxspeed"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="12344732784" lat="45.4627204" lon="11.9213032" version="1" timestamp="2024-11-15T20:55:57Z">
+    <tag k="direction" v="355"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="12344758622" lat="45.4821003" lon="11.9221671" version="1" timestamp="2024-11-15T20:53:22Z">
+    <tag k="direction" v="20"/>
+    <tag k="highway" v="speed_camera"/>
+  </node>
+  <node id="12398666907" lat="45.4293144" lon="11.9250407" version="1" timestamp="2024-12-05T21:31:58Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="12398668450" lat="45.383487" lon="11.9188005" version="1" timestamp="2024-12-05T21:25:01Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="12398668452" lat="45.5558318" lon="11.9502872" version="1" timestamp="2024-12-05T21:40:37Z">
+    <tag k="direction" v="185"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="12398680085" lat="45.5847268" lon="11.9569586" version="1" timestamp="2024-12-05T21:46:03Z">
+    <tag k="direction" v="175"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="12398686332" lat="45.4951271" lon="11.8295452" version="1" timestamp="2024-12-05T21:52:13Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="12398719665" lat="45.6135417" lon="11.7974676" version="1" timestamp="2024-12-05T22:01:08Z">
+    <tag k="direction" v="170"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="50"/>
+  </node>
+  <node id="13017608606" lat="45.4750649" lon="12.0168422" version="1" timestamp="2025-07-22T16:33:27Z">
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="70"/>
+  </node>
+  <node id="13018754246" lat="45.5095364" lon="11.8139743" version="1" timestamp="2025-07-23T09:47:14Z">
+    <tag k="direction" v="305"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+  <node id="13018754247" lat="45.5099951" lon="11.8133038" version="1" timestamp="2025-07-23T09:47:14Z">
+    <tag k="direction" v="140"/>
+    <tag k="highway" v="speed_camera"/>
+    <tag k="maxspeed" v="90"/>
+  </node>
+</osm>

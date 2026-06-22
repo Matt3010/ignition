@@ -57,10 +57,10 @@ describe("mock test drive", () => {
     const firstCamera500 = responses[0].alerts.find((alert) => alert.id === "camera-500");
     const lastCamera500 = responses[2].alerts.find((alert) => alert.id === "camera-500");
     expect(firstCamera500?.distanceMeters).toBeGreaterThan(lastCamera500?.distanceMeters ?? Infinity);
-    expect(responses.flatMap((response) => response.alerts.map((alert) => alert.id))).not.toContain(
+    expect(responses.flatMap((response) => response.alerts.map((alert) => alert.id))).toContain(
       "camera-opposite",
     );
-    expect(responses.flatMap((response) => response.alerts.map((alert) => alert.id))).not.toContain(
+    expect(responses.flatMap((response) => response.alerts.map((alert) => alert.id))).toContain(
       "parallel-250",
     );
     await app.close();
@@ -85,7 +85,13 @@ describe("mock test drive", () => {
     const body = response.json() as RoadContextBody;
     expect(body.roadId).toBe("way-parallel");
     expect(body.roadName).toBe("Complanare mock");
-    expect(body.alerts.map((alert) => alert.id)).toEqual(["parallel-250"]);
+    expect(body.alerts.map((alert) => alert.id)).toEqual([
+      "parallel-250",
+      "works-350",
+      "camera-500",
+      "hazard-650",
+      "camera-1000",
+    ]);
     expect(body.confidence).toBeLessThan(0.85);
     await app.close();
   });

@@ -37,6 +37,8 @@ export const roadContextResponseSchema = z.object({
       longitude: z.number(),
       direction: z.enum(["forward", "backward", "unknown"]),
       confidence: z.number().min(0).max(1),
+      operationalStatus: z.enum(["operational", "notOperational", "unknown"]),
+      statusReason: z.string().nullable(),
     }),
   ),
 });

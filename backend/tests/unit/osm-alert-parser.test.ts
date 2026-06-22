@@ -76,7 +76,7 @@ describe("OSM alert parser", () => {
     expect(result.alerts[3].bearing).toBeCloseTo(0);
   });
 
-  it("keeps directional OSM enforcement relations and suppresses the generic device duplicate", () => {
+  it("keeps directional OSM enforcement relations and the source device node", () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <osm version="0.6">
   <node id="1" lat="45.0000" lon="11.0000"/>
@@ -107,9 +107,53 @@ describe("OSM alert parser", () => {
 
     const result = parseOsmAlerts(xml);
 
+    expect(result.alerts).toHaveLength(3);
+    expect(result.alerts.filter((alert) => alert.type === "fixedSpeedCamera")).toHaveLength(3);
+    const relationBearings = result.alerts
+      .filter((alert) => alert.osmType === "relation")
+      .map((alert) => alert.bearing);
+    expect(relationBearings[0]).toBeCloseTo(0);
+    expect(relationBearings[1]).toBeCloseTo(90);
+  });
+});
+
+describe("OSM alert quality hardening", () => {
+  it("keeps cameras marked as missing with a non-operational status and penalizes approximate positions", () => {
+    const xml = `<osm version="0.6">
+      <node id="1" lat="45" lon="11" timestamp="2026-01-01T00:00:00Z" version="2">
+        <tag k="highway" v="speed_camera"/>
+        <tag k="fixme" v="no trace of a speed camera here"/>
+      </node>
+      <node id="2" lat="45.001" lon="11.001" timestamp="2026-01-01T00:00:00Z" version="2">
+        <tag k="highway" v="speed_camera"/>
+        <tag k="fixme" v="approx position"/>
+      </node>
+    </osm>`;
+
+    const result = parseOsmAlerts(xml);
     expect(result.alerts).toHaveLength(2);
-    expect(result.alerts.filter((alert) => alert.type === "fixedSpeedCamera")).toHaveLength(2);
-    expect(result.alerts[0].bearing).toBeCloseTo(0);
-    expect(result.alerts[1].bearing).toBeCloseTo(90);
+    expect(result.alerts.find((alert) => alert.osmId === "1")).toMatchObject({
+      operationalStatus: "notOperational",
+      statusReason: "no trace of a speed camera here",
+      active: true,
+    });
+    expect(result.alerts.find((alert) => alert.osmId === "2")).toMatchObject({
+      osmId: "2",
+      positionApproximate: true,
+      fixme: "approx position",
+    });
+    expect(result.alerts.find((alert) => alert.osmId === "2")?.confidence).toBeLessThan(0.6);
+  });
+
+  it("preserves coincident cameras, including likely duplicates and opposite bearings", () => {
+    const xml = `<osm version="0.6">
+      <node id="1" lat="45" lon="11"><tag k="highway" v="speed_camera"/><tag k="direction" v="10"/></node>
+      <node id="2" lat="45.00001" lon="11.00001"><tag k="highway" v="speed_camera"/><tag k="direction" v="12"/></node>
+      <node id="3" lat="45.00001" lon="11.00001"><tag k="highway" v="speed_camera"/><tag k="direction" v="190"/></node>
+    </osm>`;
+
+    const result = parseOsmAlerts(xml);
+    expect(result.alerts).toHaveLength(3);
+    expect(result.alerts.map((alert) => alert.osmId)).toEqual(["1", "2", "3"]);
   });
 });

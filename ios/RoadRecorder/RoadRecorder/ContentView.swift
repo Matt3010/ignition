@@ -245,6 +245,14 @@ private struct EventAlertLine: View {
                 .foregroundStyle(.orange)
             Text("id: \(alert.id)")
             Text("limite alert: \(alert.speedLimitKmh.map { "\($0) km/h" } ?? "n/d") (\(DriveEventFormatter.speedLimitSourceText(alert.speedLimitSource))), direzione: \(alert.direction), confidenza: \(percent(alert.confidence))")
+            if let operationalStatus = alert.operationalStatus {
+                Text("stato: \(DriveEventFormatter.operationalStatusText(operationalStatus))")
+                    .foregroundStyle(operationalStatus == "notOperational" ? Color.orange : Color.secondary)
+            }
+            if let statusReason = alert.statusReason, !statusReason.isEmpty {
+                Text("motivo OSM: \(statusReason)")
+                    .foregroundStyle(.secondary)
+            }
             Text(String(format: "posizione alert: %.5f, %.5f", alert.latitude, alert.longitude))
         }
         .padding(.leading, 2)

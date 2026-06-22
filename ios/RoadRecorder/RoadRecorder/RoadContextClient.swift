@@ -63,6 +63,8 @@ struct RoadAlert: Codable {
     let longitude: Double
     let direction: String
     let confidence: Double
+    let operationalStatus: String?
+    let statusReason: String?
 }
 
 struct RecorderEvent: Identifiable, Codable {
@@ -172,7 +174,9 @@ enum DriveEventFormatter {
             let limit = alert.speedLimitKmh.map {
                 ", limite \($0) km/h (\(speedLimitSourceText(alert.speedLimitSource)))"
             } ?? ""
-            return "alert \(alert.type) a \(Int(alert.distanceMeters.rounded())) m\(limit)"
+            let operationalStatus = alert.operationalStatus.map { ", stato \(operationalStatusText($0))" } ?? ""
+            let statusReason = alert.statusReason.map { ", motivo: \($0)" } ?? ""
+            return "alert \(alert.type) a \(Int(alert.distanceMeters.rounded())) m\(limit)\(operationalStatus)\(statusReason)"
         } ?? "nessun alert vicino"
 
         return "\(speed), \(roadLabel), \(limitLabel), \(speedStatus), \(nearestAlert)"
@@ -192,6 +196,18 @@ enum DriveEventFormatter {
             return "LIMITE SUPERATO di \(Int((sample.speedKmh - Double(limit)).rounded())) km/h"
         }
         return "velocita ok"
+    }
+
+
+    static func operationalStatusText(_ status: String) -> String {
+        switch status {
+        case "operational":
+            return "operativo"
+        case "notOperational":
+            return "segnalato come non funzionante"
+        default:
+            return "stato sconosciuto"
+        }
     }
 
     static func speedLimitSourceText(_ source: String?) -> String {

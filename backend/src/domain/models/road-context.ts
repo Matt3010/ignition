@@ -1,4 +1,4 @@
-import type { AlertCandidate, Direction, SpeedLimitSource } from "./alert.js";
+import type { AlertCandidate, Direction, OperationalStatus, SpeedLimitSource } from "./alert.js";
 
 export interface GpsSample {
   latitude: number;
@@ -53,6 +53,8 @@ export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceM
     longitude: number;
     direction: Direction;
     confidence: number;
+    operationalStatus: OperationalStatus;
+    statusReason: string | null;
   }>;
 }
 
