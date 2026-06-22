@@ -25,12 +25,6 @@ migrate:
 seed:
 	npm run seed
 
-import-alerts:
-	npm run import:osm-alerts
-
-purge-non-osm-alerts:
-	npm run alerts:purge-non-osm
-
 valhalla-build:
 	npm run valhalla:build
 

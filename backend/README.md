@@ -149,7 +149,6 @@ Per rimuovere dal DB locale vecchi alert non OSM creati da fixture o seed preced
 
 ```bash
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
-npm run alerts:purge-non-osm
 ```
 
 ## OpenStreetMap e Valhalla

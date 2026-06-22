@@ -4,9 +4,7 @@ import { spawnSync } from "node:child_process";
 
 const allowed = new Set([
   "migrate",
-  "import-alerts",
   "import-osm-alerts",
-  "purge-non-osm-alerts",
   "raspberry-smoke",
   "health",
 ]);
