@@ -88,6 +88,11 @@ export class GetRoadContextUseCase {
 
       return {
         matched: match.matched,
+        matchStatus: match.matched
+          ? "matched"
+          : match.unmatchedReason === "providerError"
+            ? "providerUnavailable"
+            : "noMatch",
         roadId: match.roadId,
         roadName: match.roadName,
         speedLimitKmh: match.speedLimitKmh,

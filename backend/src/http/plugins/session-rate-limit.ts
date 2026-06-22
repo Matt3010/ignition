@@ -6,7 +6,7 @@ export async function registerSessionRateLimit(app: FastifyInstance): Promise<vo
   const reservations = new WeakMap<object, { sessionId: string; reservedAt: number }>();
 
   app.addHook("preHandler", async (request, reply) => {
-    if (request.method !== "POST" || request.url !== "/api/v1/road-context") return;
+    if (request.method !== "POST" || request.routeOptions.url !== "/api/v1/road-context") return;
 
     const body = request.body as { sessionId?: string; timestamp?: string } | undefined;
     if (!body?.sessionId) return;

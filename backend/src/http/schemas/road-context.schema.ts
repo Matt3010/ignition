@@ -15,6 +15,7 @@ export const roadContextRequestSchema = z.object({
 
 export const roadContextResponseSchema = z.object({
   matched: z.boolean(),
+  matchStatus: z.enum(["matched", "noMatch", "providerUnavailable"]),
   roadId: z.string().nullable(),
   roadName: z.string().nullable(),
   speedLimitKmh: z.number().int().positive().nullable(),

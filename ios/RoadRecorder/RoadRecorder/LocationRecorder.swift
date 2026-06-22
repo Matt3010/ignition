@@ -260,7 +260,13 @@ final class LocationRecorder: NSObject, ObservableObject {
                 latencyMs: endedAtDate.timeIntervalSince(startedAtDate) * 1000,
                 httpStatusCode: result.httpStatusCode
             )
-            statusText = warmupOnly(event) ? "Aggancio in corso" : result.response.matched ? "Invio ok" : "Non agganciata"
+            statusText = warmupOnly(event)
+                ? "Aggancio in corso"
+                : result.response.matched
+                    ? "Invio ok"
+                    : result.response.matchStatus == "providerUnavailable"
+                        ? "Mappe non disponibili"
+                        : "Non agganciata"
             prepend(event, sessionId: requestSessionId, backendURL: backendURL)
         } catch is CancellationError {
             return

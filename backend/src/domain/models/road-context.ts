@@ -26,6 +26,7 @@ export interface MatchedRoad {
 }
 
 export type UnmatchedReason = "noMatch" | "providerError";
+export type PublicMatchStatus = "matched" | "noMatch" | "providerUnavailable";
 
 export interface UnmatchedRoad {
   matched: false;
@@ -46,6 +47,7 @@ export interface UnmatchedRoad {
 export type RoadMatch = MatchedRoad | UnmatchedRoad;
 
 export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceMeters" | "bearing" | "valhallaQuality" | "unmatchedReason"> {
+  matchStatus: PublicMatchStatus;
   alerts: Array<{
     id: string;
     type: AlertCandidate["type"];

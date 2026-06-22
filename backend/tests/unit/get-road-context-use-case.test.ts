@@ -90,7 +90,7 @@ describe("GetRoadContextUseCase transactional session flow", () => {
     expect(traceStore.getState(validPayload.sessionId)?.confidence).toBe(0.8);
 
     shouldFail = false;
-    await expect(useCase.execute(validPayload)).resolves.toMatchObject({ matched: false });
+    await expect(useCase.execute(validPayload)).resolves.toMatchObject({ matched: false, matchStatus: "noMatch" });
     expect(traceStore.getState(validPayload.sessionId)?.confidence).toBe(0.8);
   });
 
@@ -122,7 +122,7 @@ describe("GetRoadContextUseCase transactional session flow", () => {
           ...validPayload,
           timestamp: new Date(Date.parse(validPayload.timestamp) + offset * 1_000).toISOString(),
         }),
-      ).resolves.toMatchObject({ matched: false });
+      ).resolves.toMatchObject({ matched: false, matchStatus: "providerUnavailable" });
     }
 
     expect(traceStore.getState(validPayload.sessionId)).toMatchObject({

@@ -37,6 +37,7 @@ struct RoadContextSample: Codable {
 
 struct RoadContextResponse: Codable {
     let matched: Bool
+    let matchStatus: String?
     let roadId: String?
     let roadName: String?
     let speedLimitKmh: Int?
@@ -189,7 +190,8 @@ struct RecorderEvent: Identifiable, Codable {
     var resultText: String {
         if errorMessage != nil { return "errore" }
         guard let response else { return "n/d" }
-        return response.matched ? "\(Int((response.confidence * 100).rounded()))%" : "no match"
+        if response.matched { return "\(Int((response.confidence * 100).rounded()))%" }
+        return response.matchStatus == "providerUnavailable" ? "provider non disponibile" : "no match"
     }
 
     var networkText: String {
@@ -209,7 +211,9 @@ enum DriveEventFormatter {
 
         let roadLabel = response.matched
             ? roadName(response)
-            : "strada non agganciata"
+            : response.matchStatus == "providerUnavailable"
+                ? "servizio mappe non disponibile"
+                : "strada non agganciata"
         let limitLabel = response.speedLimitKmh.map {
             "limite \($0) km/h (\(speedLimitSourceText(response.speedLimitSource)))"
         } ?? "limite sconosciuto"

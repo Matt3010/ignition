@@ -173,7 +173,7 @@ private struct EventRow: View {
                 VStack(alignment: .leading, spacing: 5) {
                     EventDetailLine(
                         icon: response.matched ? "road.lanes" : "exclamationmark.triangle",
-                        text: "match: \(response.matched ? "si" : "no"), confidenza \(percent(response.confidence))"
+                        text: "match: \(response.matched ? "si" : "no"), stato \(response.matchStatus ?? "legacy"), confidenza \(percent(response.confidence))"
                     )
                     EventDetailLine(icon: "signpost.right", text: "strada: \(response.roadName ?? "non agganciata")")
                     EventDetailLine(icon: "number", text: "roadId: \(response.roadId ?? "n/d")")

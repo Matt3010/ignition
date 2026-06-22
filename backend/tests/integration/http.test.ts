@@ -25,6 +25,7 @@ describe("HTTP API", () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.matched).toBe(true);
+    expect(body.matchStatus).toBe("matched");
     expect(body.speedLimitKmh).toBe(70);
     expect(body.speedLimitSource).toBe("explicit");
     expect(
@@ -76,6 +77,7 @@ describe("HTTP API", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().matched).toBe(false);
+    expect(response.json().matchStatus).toBe("noMatch");
     await app.close();
   });
 
@@ -137,6 +139,25 @@ describe("HTTP API", () => {
     expect(second.statusCode).toBe(429);
     expect(second.json().error.code).toBe("TOO_MANY_REQUESTS");
     expect(second.headers["retry-after"]).toBeDefined();
+    await app.close();
+  });
+
+  it("enforces the session interval even when query strings differ", async () => {
+    const app = await buildApp(testConfig({ MIN_CLIENT_INTERVAL_MS: 10_000 }));
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context?source=first",
+      payload: validPayload,
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context?source=second",
+      payload: { ...validPayload, timestamp: "2026-06-17T20:30:01Z" },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(429);
+    expect(second.json().error.code).toBe("TOO_MANY_REQUESTS");
     await app.close();
   });
 
