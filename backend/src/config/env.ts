@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-const optionalUrlEnv = z.preprocess((value) => {
-  if (typeof value === "string" && value.trim() === "") return undefined;
-  return value;
-}, z.string().url().optional());
-
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -35,9 +30,7 @@ const envSchema = z.object({
   APP_DEBUG_LOG_MAX_FILE_BYTES: z.coerce.number().int().positive().default(5_000_000),
   APP_DEBUG_LOG_MAX_FILES: z.coerce.number().int().positive().default(200),
   APP_DEBUG_LOG_RETENTION_DAYS: z.coerce.number().int().positive().default(14),
-  OSM_EXTRACT_PRESET: z.string().default("italy"),
-  OSM_EXTRACT_URL: optionalUrlEnv,
-  OSM_REGION: z.string().default("italy"),
+  OSM_REGIONS: z.string().default("italy"),
   OSM_DATA_DIR: z.string().default("./data/osm"),
   OSM_HOST_DATA_DIR: z.string().optional(),
   OSM_IMPORT_MIN_RETAIN_RATIO: z.coerce.number().min(0).max(1).default(0.2),

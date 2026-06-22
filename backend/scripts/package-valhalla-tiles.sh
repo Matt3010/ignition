@@ -3,7 +3,9 @@ set -euo pipefail
 
 VALHALLA_TILE_DIR="${VALHALLA_TILE_DIR:-./data/valhalla}"
 OUTPUT_DIR="${OUTPUT_DIR:-./dist-artifacts}"
-REGION="${OSM_REGION:-valhalla}"
+REGION="${OSM_REGIONS:-italy}"
+REGION="${REGION//,/+}"
+REGION="${REGION// /}"
 
 absolute_path() {
   case "$1" in

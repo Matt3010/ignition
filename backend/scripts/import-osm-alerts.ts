@@ -7,7 +7,7 @@ import { parseOsmAlerts } from "../src/infrastructure/osm/osm-alert-parser.js";
 import { loadConfig } from "../src/config/env.js";
 
 interface CliOptions {
-  file: string;
+  files: string[];
   source: string;
   version: string;
   deactivateStale: boolean;
@@ -20,17 +20,27 @@ const alertRepository = new PostgisAlertRepository(pool);
 const importRepository = new PostgresImportLogRepository(pool);
 
 try {
-  const content = await readFile(options.file, "utf8");
-  const parsed = parseOsmAlerts(content, options.source);
+  const parsedFiles = await Promise.all(
+    options.files.map(async (file) => ({
+      file,
+      parsed: parseOsmAlerts(await readFile(file, "utf8"), options.source),
+    })),
+  );
+  const alertsById = new Map(
+    parsedFiles.flatMap(({ parsed }) => parsed.alerts).map((alert) => [alert.id, alert]),
+  );
+  const alerts = [...alertsById.values()];
+  const bounds = mergeBounds(parsedFiles.map(({ parsed }) => parsed.bounds));
   const result = await alertRepository.syncMany({
-    alerts: parsed.alerts,
+    alerts,
     source: options.source,
-    bounds: parsed.bounds,
+    bounds,
     deactivateMissing: options.deactivateStale,
     minRetainRatio: config.OSM_IMPORT_MIN_RETAIN_RATIO,
     minExistingForRatioCheck: config.OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK,
   });
-  const bbox = parsed.bounds ? formatBounds(parsed.bounds) : null;
+  const bbox = bounds ? formatBounds(bounds) : null;
+  const filePath = options.files.join(",");
 
   try {
     await importRepository.record({
@@ -39,7 +49,7 @@ try {
       status: "success",
       recordsCount: result.upserted,
       bbox,
-      filePath: options.file,
+      filePath,
       deactivatedCount: result.deactivated,
     });
   } catch (logError) {
@@ -52,10 +62,10 @@ try {
 
   console.log(JSON.stringify({
     source: options.source,
-    file: options.file,
+    files: options.files,
     bbox,
-    elementsScanned: parsed.elementsScanned,
-    records: parsed.alerts.length,
+    elementsScanned: parsedFiles.reduce((sum, { parsed }) => sum + parsed.elementsScanned, 0),
+    records: alerts.length,
     upserted: result.upserted,
     deactivated: result.deactivated,
   }));
@@ -66,7 +76,7 @@ try {
       version: options.version,
       status: "failed",
       recordsCount: 0,
-      filePath: options.file,
+      filePath: options.files.join(","),
       errorMessage: error instanceof Error ? error.message : String(error),
     });
   } catch (logError) {
@@ -82,7 +92,7 @@ try {
 }
 
 async function parseArgs(args: string[]): Promise<CliOptions> {
-  const supported = new Set(["file", "source", "version", "deactivate-stale"]);
+  const supported = new Set(["file", "files", "source", "version", "deactivate-stale"]);
   const result = new Map<string, string>();
 
   for (let index = 0; index < args.length; index += 2) {
@@ -97,13 +107,22 @@ async function parseArgs(args: string[]): Promise<CliOptions> {
     result.set(key, value);
   }
 
-  const file = result.get("file") ?? (await defaultOsmAlertFile());
-  if (!file.toLowerCase().endsWith(".osm") && !file.toLowerCase().endsWith(".xml")) {
-    throw new Error(`Unsupported OSM alert file: ${file}. Expected .osm or .xml`);
+  if (result.has("file") && result.has("files")) {
+    throw new Error("Use either --file or --files, not both");
+  }
+  const files = result.get("files")
+    ? splitList(result.get("files")!)
+    : result.get("file")
+      ? [result.get("file")!]
+      : await defaultOsmAlertFiles();
+  for (const file of files) {
+    if (!file.toLowerCase().endsWith(".osm") && !file.toLowerCase().endsWith(".xml")) {
+      throw new Error(`Unsupported OSM alert file: ${file}. Expected .osm or .xml`);
+    }
   }
 
   return {
-    file,
+    files,
     source: result.get("source") ?? "osm",
     version: result.get("version") ?? new Date().toISOString(),
     deactivateStale: parseBoolean(
@@ -113,14 +132,44 @@ async function parseArgs(args: string[]): Promise<CliOptions> {
   };
 }
 
-async function defaultOsmAlertFile(): Promise<string> {
-  const candidate = join(config.OSM_DATA_DIR, `${config.OSM_REGION}.alerts.osm`);
-  try {
-    await access(candidate);
-    return candidate;
-  } catch {
-    throw new Error(`Missing filtered OSM alert source: ${candidate}. Run npm run osm:refresh first.`);
+async function defaultOsmAlertFiles(): Promise<string[]> {
+  const regions = splitList(config.OSM_REGIONS);
+  const candidates = regions.map((region) => join(config.OSM_DATA_DIR, `${region}.alerts.osm`));
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+    } catch {
+      throw new Error(`Missing filtered OSM alert source: ${candidate}. Run npm run osm:refresh first.`);
+    }
   }
+  return candidates;
+}
+
+function splitList(value: string): string[] {
+  const values = value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (values.length === 0) throw new Error("OSM region/file list is empty");
+  return values;
+}
+
+function mergeBounds(bounds: Array<{
+  minLatitude: number;
+  minLongitude: number;
+  maxLatitude: number;
+  maxLongitude: number;
+} | null>): {
+  minLatitude: number;
+  minLongitude: number;
+  maxLatitude: number;
+  maxLongitude: number;
+} | null {
+  const present = bounds.filter((item): item is NonNullable<typeof item> => item !== null);
+  if (present.length === 0) return null;
+  return {
+    minLatitude: Math.min(...present.map((item) => item.minLatitude)),
+    minLongitude: Math.min(...present.map((item) => item.minLongitude)),
+    maxLatitude: Math.max(...present.map((item) => item.maxLatitude)),
+    maxLongitude: Math.max(...present.map((item) => item.maxLongitude)),
+  };
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {

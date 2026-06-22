@@ -34,8 +34,7 @@ describe("download-osm-extract.sh", () => {
         PATH: `${bin}:/usr/bin:/bin`,
         DOCKER_LOG: dockerLog,
         OSM_DATA_DIR: dataDir,
-        OSM_REGION: "test-region",
-        OSM_EXTRACT_URL: "https://example.test/test.osm.pbf",
+        OSM_REGIONS: "italy",
       },
     });
 
@@ -44,4 +43,54 @@ describe("download-osm-extract.sh", () => {
     expect(calls).toContain(`-v ${dataDir}:/data`);
     expect(calls).not.toContain(`${backendRoot}/${dataDir}`);
   });
+
+  it("downloads and filters every configured region", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "osm-download-multi-"));
+    const bin = path.join(root, "bin");
+    const dataDir = path.join(root, "data");
+    const curlLog = path.join(root, "curl.log");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(bin, { recursive: true }));
+    await writeFile(
+      path.join(bin, "curl"),
+      `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "$CURL_LOG"\nout=""\nwhile [[ $# -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done\nmkdir -p "$(dirname "$out")"\n: > "$out"\n`,
+    );
+    await writeFile(path.join(bin, "docker"), `#!/usr/bin/env bash\nexit 0\n`);
+    await chmod(path.join(bin, "curl"), 0o755);
+    await chmod(path.join(bin, "docker"), 0o755);
+
+    const result = spawnSync("bash", ["scripts/download-osm-extract.sh"], {
+      cwd: backendRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:/usr/bin:/bin`,
+        CURL_LOG: curlLog,
+        OSM_DATA_DIR: dataDir,
+        OSM_REGIONS: "italy,france",
+              },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const calls = await readFile(curlLog, "utf8");
+    expect(calls).toContain("italy-latest.osm.pbf");
+    expect(calls).toContain("france-latest.osm.pbf");
+    await expect(readFile(path.join(dataDir, "italy.osm.pbf"))).resolves.toBeDefined();
+    await expect(readFile(path.join(dataDir, "france.osm.pbf"))).resolves.toBeDefined();
+  });
+  it("rejects unknown region presets instead of accepting custom URLs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "osm-download-unknown-"));
+    const result = spawnSync("bash", ["scripts/download-osm-extract.sh"], {
+      cwd: backendRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OSM_DATA_DIR: path.join(root, "data"),
+        OSM_REGIONS: "custom-region",
+      },
+    });
+
+    expect(result.status).toBe(64);
+    expect(result.stderr).toContain("Unknown OSM region preset: custom-region");
+  });
+
 });

@@ -102,7 +102,7 @@ La ricerca alert usa `ST_DWithin` e `ST_DistanceSphere`, restituisce tutti i rec
 
 ## Importazione Dati
 
-`make seed` non inserisce fixture: importa alert statici dal file OSM locale `${OSM_DATA_DIR}/${OSM_REGION}.alerts.osm` generato da `npm run osm:download`. In fallback legge `${OSM_DATA_DIR}/${OSM_REGION}.osm`.
+`make seed` non inserisce fixture: importa gli alert statici dai file `${OSM_DATA_DIR}/<regione>.alerts.osm` generati da `npm run osm:download` per tutte le regioni elencate in `OSM_REGIONS`.
 
 Formati supportati:
 
@@ -113,7 +113,7 @@ Formati supportati:
 Import OSM reale:
 
 ```bash
-OSM_REGION=italy \
+OSM_REGIONS=italy,france \
 DATABASE_URL=postgres://road:road@127.0.0.1:5433/road_context \
 npm run import:osm-alerts
 ```
@@ -161,31 +161,23 @@ npm run osm:download
 
 Preset supportati: `italy`, `france`, `germany`, `spain`, `switzerland`, `austria`, `slovenia`, `croatia`.
 
-Per un altro stato o una macro-regione Geofabrik:
+Per una o più regioni Geofabrik:
 
 ```bash
-OSM_EXTRACT_PRESET=france OSM_REGION=france npm run osm:download
+OSM_REGIONS=italy,france,switzerland npm run osm:download
 ```
 
-Oppure URL esplicito:
+Il download produce, per ogni regione configurata:
 
-```bash
-OSM_REGION=custom \
-OSM_EXTRACT_URL=https://download.geofabrik.de/europe/monaco-latest.osm.pbf \
-npm run osm:download
-```
-
-Il download produce:
-
-- `${OSM_DATA_DIR}/${OSM_REGION}.osm.pbf` per Valhalla
-- `${OSM_DATA_DIR}/${OSM_REGION}.alerts.osm` filtrato per import alert statici
+- `${OSM_DATA_DIR}/<regione>.osm.pbf` per Valhalla
+- `${OSM_DATA_DIR}/<regione>.alerts.osm` filtrato per import alert statici
 
 Costruire tile Valhalla:
 
 ```bash
 OSM_DATA_DIR=./data/osm \
 VALHALLA_TILE_DIR=./data/valhalla \
-OSM_REGION=italy \
+OSM_REGIONS=italy,france \
 npm run valhalla:build
 ```
 
@@ -206,11 +198,13 @@ Aggiornamento automatico ogni 24 ore:
 docker compose --profile maintenance up -d osm-refresh
 ```
 
-Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`: dorme `OSM_REFRESH_INTERVAL_SECONDS` secondi, default `86400`, poi scarica e valida il nuovo estratto, ricostruisce le tile in staging, le attiva mantenendo stabile il mount di Valhalla, importa gli alert e applica rollback delle tile se una fase critica fallisce. Per eseguire un refresh anche all'avvio:
+Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`. Se le tile non esistono ancora, esegue automaticamente un bootstrap immediato; altrimenti rispetta `OSM_REFRESH_RUN_ON_START` e poi attende `OSM_REFRESH_INTERVAL_SECONDS`, default `86400`, tra un ciclo e il successivo. Ogni refresh scarica e valida il nuovo estratto, ricostruisce le tile in staging, le attiva mantenendo stabile il mount di Valhalla, attende che `/status` torni healthy, importa gli alert e applica rollback delle tile se una fase critica fallisce.
 
 ```bash
 OSM_REFRESH_RUN_ON_START=true docker compose --profile maintenance up -d osm-refresh
 ```
+
+Il maintenance dipende da PostgreSQL healthy e dalla sola creazione del container Valhalla, non dalla sua health. Questo evita il deadlock del primo avvio quando le tile non sono ancora presenti. I timeout sono configurabili con `VALHALLA_HEALTH_TIMEOUT_SECONDS` e `VALHALLA_HEALTH_INTERVAL_SECONDS`; `OSM_REFRESH_LOCK_STALE_SECONDS` controlla il recupero dei lock orfani.
 
 Refresh manuale:
 
@@ -322,9 +316,7 @@ Vedere `.env.example`. Le più importanti:
 - `MAX_GPS_ACCURACY_METERS`
 - `MAX_SAMPLE_AGE_SECONDS`
 - `MAX_SAMPLE_FUTURE_SECONDS`
-- `OSM_EXTRACT_PRESET`
-- `OSM_EXTRACT_URL`
-- `OSM_REGION`
+- `OSM_REGIONS`
 - `OSM_DATA_DIR`
 - `VALHALLA_TILE_DIR`
 - `OSM_REFRESH_INTERVAL_SECONDS`
@@ -372,3 +364,21 @@ RUN_VALHALLA_INTEGRATION=1 VALHALLA_BASE_URL=http://127.0.0.1:8002 \
 ```
 
 Il job Valhalla è separato perché scarica dati OSM e costruisce tile reali, quindi è più lento della CI ordinaria.
+
+## Multiple OSM regions
+
+The maintenance pipeline can download and build multiple Geofabrik extracts in one refresh.
+Set a comma-separated list:
+
+```env
+OSM_REGIONS=italy,france,switzerland
+```
+
+On the first bootstrap and every scheduled refresh the service:
+
+1. downloads every configured extract;
+2. creates one filtered alert file per region;
+3. builds one Valhalla tile set from all PBF files in a single command;
+4. imports all alert files in one atomic synchronization, so alerts from one region are not deactivated while another region is imported.
+
+`OSM_REGIONS` is the only region configuration. Custom extract URLs are intentionally unsupported so every configured area follows the same reproducible Geofabrik workflow.

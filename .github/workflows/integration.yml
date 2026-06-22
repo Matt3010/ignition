@@ -5,11 +5,13 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/integration.yml'
+      - '.github/npm-ci.sh'
   push:
     branches: [main, master]
     paths:
       - 'backend/**'
       - '.github/workflows/integration.yml'
+      - '.github/npm-ci.sh'
   workflow_dispatch:
     inputs:
       run_valhalla:
@@ -58,27 +60,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Read tool versions
-        id: tool-versions
-        shell: bash
-        run: |
-          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
-          echo "npm=$(npm --version)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore installed dependencies
-        id: node-modules-cache
-        uses: actions/cache@v5
-        with:
-          path: backend/node_modules
-          key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.tool-versions.outputs.node }}-${{ steps.tool-versions.outputs.npm }}-${{ hashFiles('backend/package-lock.json') }}
-
       - name: Install dependencies
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: ../.github/npm-ci.sh
 
       - name: Build
         run: npm run build
@@ -103,7 +90,7 @@ jobs:
       VALHALLA_DOCKER_IMAGE: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
       VALHALLA_DOCKER_PLATFORM: linux/amd64
       VALHALLA_BASE_URL: http://127.0.0.1:8002
-      OSM_REGION: monaco
+      OSM_REGIONS: monaco
       OSM_DATA_DIR: ./data/osm
       VALHALLA_TILE_DIR: ./data/valhalla-ci
     defaults:
@@ -116,27 +103,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Read tool versions
-        id: tool-versions
-        shell: bash
-        run: |
-          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
-          echo "npm=$(npm --version)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore installed dependencies
-        id: node-modules-cache
-        uses: actions/cache@v5
-        with:
-          path: backend/node_modules
-          key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.tool-versions.outputs.node }}-${{ steps.tool-versions.outputs.npm }}-${{ hashFiles('backend/package-lock.json') }}
-
       - name: Install dependencies
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: ../.github/npm-ci.sh
 
       - name: Pull pinned Valhalla image
         run: docker pull "${VALHALLA_DOCKER_IMAGE}"
@@ -145,7 +117,7 @@ jobs:
         run: |
           mkdir -p "${OSM_DATA_DIR}"
           curl --fail --location --retry 4 --retry-all-errors \
-            --output "${OSM_DATA_DIR}/${OSM_REGION}.osm.pbf" \
+            --output "${OSM_DATA_DIR}/${OSM_REGIONS}.osm.pbf" \
             https://download.geofabrik.de/europe/monaco-latest.osm.pbf
 
       - name: Build Valhalla tiles
