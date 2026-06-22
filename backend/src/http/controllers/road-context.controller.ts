@@ -3,6 +3,7 @@ import type { GetRoadContextUseCase } from "../../application/use-cases/get-road
 import { ApplicationError } from "../../domain/errors/application-error.js";
 import { normalizeCourse } from "../../domain/services/geo.js";
 import { roadContextRequestSchema } from "../schemas/road-context.schema.js";
+import { hashSessionId } from "../../domain/services/session-id.js";
 
 export class RoadContextController {
   constructor(private readonly useCase: GetRoadContextUseCase) {}
@@ -40,7 +41,7 @@ export class RoadContextController {
 
     request.log.info(
       {
-        sessionHash: hashSession(payload.sessionId),
+        sessionHash: hashSessionId(payload.sessionId),
         gps: request.server.config.NODE_ENV === "production" ? "redacted" : roundedGps(payload),
       },
       "road context request",
@@ -57,11 +58,6 @@ export class RoadContextController {
   };
 }
 
-function hashSession(value: string): string {
-  let hash = 5381;
-  for (let index = 0; index < value.length; index += 1) hash = (hash * 33) ^ value.charCodeAt(index);
-  return `s_${(hash >>> 0).toString(16)}`;
-}
 
 function roundedGps(payload: { latitude: number; longitude: number }): { lat: number; lon: number } {
   return {

@@ -65,3 +65,47 @@ describe("Valhalla provider", () => {
     expect(result.speedLimitKmh).toBeNull();
   });
 });
+
+it("classifies structurally incomplete Valhalla payloads as provider errors", async () => {
+  const provider = new ValhallaRoadContextProvider({
+    traceAttributes: async () => ({ matched_points: [{}], edges: [{}] }),
+    health: async () => "up",
+  });
+  const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+  expect(result.matched).toBe(false);
+  if (!result.matched) expect(result.unmatchedReason).toBe("providerError");
+});
+
+it("classifies out-of-range edge indexes as provider errors", async () => {
+  const provider = new ValhallaRoadContextProvider({
+    traceAttributes: async () => ({
+      matched_points: [{ edge_index: 2, type: "matched" }],
+      edges: [{ way_id: 1 }],
+    }),
+    health: async () => "up",
+  });
+  const result = await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+  expect(result.matched).toBe(false);
+  if (!result.matched) expect(result.unmatchedReason).toBe("providerError");
+});
+
+it("logs only a hashed session identifier on provider failures", async () => {
+  const warnings: Record<string, unknown>[] = [];
+  const provider = new ValhallaRoadContextProvider(
+    {
+      traceAttributes: async () => {
+        throw new Error("down");
+      },
+      health: async () => "down",
+    },
+    {
+      warn: (data) => warnings.push(data),
+    },
+  );
+
+  await provider.match({ sample: validPayload, trace: [validPayload], previousState: null });
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).not.toHaveProperty("sessionId");
+  expect(warnings[0]?.sessionHash).toMatch(/^s_[0-9a-f]+$/);
+  expect(warnings[0]?.sessionHash).not.toBe(validPayload.sessionId);
+});

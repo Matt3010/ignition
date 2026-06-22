@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { ApplicationError } from "../../domain/errors/application-error.js";
+import { hashSessionId } from "../../domain/services/session-id.js";
 
 export async function registerErrorHandler(app: FastifyInstance): Promise<void> {
   app.setErrorHandler((error, request, reply) => {
@@ -133,14 +134,9 @@ function logClientError(
       statusCode: event.statusCode,
       code: event.code,
       details: event.details,
-      sessionHash: body?.sessionId ? hashSession(body.sessionId) : null,
+      sessionHash: body?.sessionId ? hashSessionId(body.sessionId) : null,
     },
     event.message,
   );
 }
 
-function hashSession(value: string): string {
-  let hash = 5381;
-  for (let index = 0; index < value.length; index++) hash = (hash * 33) ^ value.charCodeAt(index);
-  return `s_${(hash >>> 0).toString(16)}`;
-}

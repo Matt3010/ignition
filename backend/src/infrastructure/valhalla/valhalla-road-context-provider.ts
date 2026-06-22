@@ -1,8 +1,10 @@
+import { z } from "zod";
 import type { RoadContextProvider } from "../../application/ports/road-context-provider.js";
 import type { GpsSample, MatchedRoad, RoadMatch } from "../../domain/models/road-context.js";
 import { calculateRoadConfidence } from "../../domain/services/confidence.js";
 import { normalizeCourse } from "../../domain/services/geo.js";
 import { parseMaxspeed } from "../../domain/services/maxspeed.js";
+import { hashSessionId } from "../../domain/services/session-id.js";
 import type { ValhallaTracePoint } from "./valhalla-client.js";
 
 export interface ValhallaGateway {
@@ -10,26 +12,44 @@ export interface ValhallaGateway {
   health(): Promise<"up" | "down">;
 }
 
-interface ValhallaEdge {
-  names?: string[];
-  way_id?: string | number;
-  road_class?: string;
-  speed_limit?: number | string;
-  forward?: boolean;
-  begin_heading?: number;
-  end_heading?: number;
-}
+const valhallaEdgeSchema = z
+  .object({
+    names: z.array(z.string()).optional(),
+    way_id: z.union([z.string(), z.number()]).optional(),
+    road_class: z.string().optional(),
+    speed_limit: z.union([z.number(), z.string()]).optional(),
+    forward: z.boolean().optional(),
+    begin_heading: z.number().finite().optional(),
+    end_heading: z.number().finite().optional(),
+  })
+  .passthrough()
+  .superRefine((edge, context) => {
+    const hasName = edge.names?.some((name) => name.trim().length > 0) ?? false;
+    if (edge.way_id === undefined && !hasName && edge.road_class === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Valhalla edge has no road identity",
+      });
+    }
+  });
 
-interface ValhallaMatchedPoint {
-  edge_index?: number;
-  distance_from_trace_point?: number;
-  type?: string;
-}
+const valhallaMatchedPointSchema = z
+  .object({
+    edge_index: z.number().int().nonnegative(),
+    distance_from_trace_point: z.number().finite().optional(),
+    type: z.string().optional(),
+  })
+  .passthrough();
 
-interface ValhallaTraceAttributes {
-  edges?: ValhallaEdge[];
-  matched_points?: ValhallaMatchedPoint[];
-}
+const valhallaTraceAttributesSchema = z
+  .object({
+    edges: z.array(valhallaEdgeSchema),
+    matched_points: z.array(valhallaMatchedPointSchema),
+  })
+  .passthrough();
+
+type ValhallaEdge = z.infer<typeof valhallaEdgeSchema>;
+type ValhallaMatchedPoint = z.infer<typeof valhallaMatchedPointSchema>;
 
 interface WarningLogger {
   warn(data: Record<string, unknown>, message: string): void;
@@ -44,10 +64,14 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
   async match(input: Parameters<RoadContextProvider["match"]>[0]): Promise<RoadMatch> {
     try {
       const points = input.trace.map(toValhallaPoint);
-      const data = (await this.client.traceAttributes(points)) as ValhallaTraceAttributes;
-      const matched = data.matched_points?.at(-1);
-      const edge = matched?.edge_index !== undefined ? data.edges?.[matched.edge_index] : data.edges?.at(-1);
-      if (!matched || !edge) return unmatched(input.sample, 0.15, "noMatch");
+      const data = valhallaTraceAttributesSchema.parse(await this.client.traceAttributes(points));
+      const matched = data.matched_points.at(-1);
+      if (!matched) return unmatched(input.sample, 0.15, "noMatch");
+
+      const edge = data.edges[matched.edge_index];
+      if (!edge) {
+        throw new Error(`Valhalla edge_index ${matched.edge_index} is outside edges bounds`);
+      }
 
       const distance = Number(matched.distance_from_trace_point ?? input.sample.horizontalAccuracyMeters);
       const speedLimit = parseMaxspeed(edge.speed_limit);
@@ -74,7 +98,7 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
       this.logger?.warn(
         {
           error: error instanceof Error ? error.message : String(error),
-          sessionId: input.sample.sessionId,
+          sessionHash: hashSessionId(input.sample.sessionId),
         },
         "Valhalla road match failed",
       );
