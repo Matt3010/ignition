@@ -1,0 +1,145 @@
+services:
+  backend:
+    image: ${IGNITION_IMAGE:?Set IGNITION_IMAGE, for example ghcr.io/owner/repository:latest}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://road:road@postgres:5432/road_context
+      VALHALLA_BASE_URL: http://valhalla:8002
+      ROAD_CONTEXT_PROVIDER: valhalla
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-5000}
+      VALHALLA_TIMEOUT_MS: ${VALHALLA_TIMEOUT_MS:-2500}
+      MAX_GPS_ACCURACY_METERS: ${MAX_GPS_ACCURACY_METERS:-50}
+      MAX_SAMPLE_AGE_SECONDS: ${MAX_SAMPLE_AGE_SECONDS:-60}
+      MAX_SAMPLE_FUTURE_SECONDS: ${MAX_SAMPLE_FUTURE_SECONDS:-5}
+      ALERT_SEARCH_RADIUS_METERS: ${ALERT_SEARCH_RADIUS_METERS:-1500}
+      ALERT_BEHIND_MIN_ANGLE_DEGREES: ${ALERT_BEHIND_MIN_ANGLE_DEGREES:-135}
+      ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES: ${ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES:-170}
+      ALERT_BEHIND_MIN_SPEED_KMH: ${ALERT_BEHIND_MIN_SPEED_KMH:-5}
+      ALERT_BEHIND_MAX_GPS_ACCURACY_METERS: ${ALERT_BEHIND_MAX_GPS_ACCURACY_METERS:-25}
+      ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS: ${ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS:-5}
+      SESSION_TRACE_TTL_SECONDS: ${SESSION_TRACE_TTL_SECONDS:-180}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PAYLOAD_LIMIT_BYTES: ${PAYLOAD_LIMIT_BYTES:-65536}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-180}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1 minute}
+      MIN_CLIENT_INTERVAL_MS: ${MIN_CLIENT_INTERVAL_MS:-1000}
+      OSM_REGIONS: ${OSM_REGIONS:-italy}
+      OSM_DATA_DIR: /app/data/osm
+      OSM_HOST_DATA_DIR: ${PWD}/data/osm
+      VALHALLA_TILE_DIR: /app/data/valhalla
+      APP_DEBUG_LOG_DIR: /app/reports/app-debug-logs
+      APP_DEBUG_LOG_MAX_FILE_BYTES: ${APP_DEBUG_LOG_MAX_FILE_BYTES:-5000000}
+      APP_DEBUG_LOG_MAX_FILES: ${APP_DEBUG_LOG_MAX_FILES:-200}
+      APP_DEBUG_LOG_RETENTION_DAYS: ${APP_DEBUG_LOG_RETENTION_DAYS:-14}
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valhalla:
+        condition: service_healthy
+    networks:
+      - road-context
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  osm-refresh:
+    image: ${IGNITION_IMAGE:?Set IGNITION_IMAGE, for example ghcr.io/owner/repository:latest}
+    pull_policy: always
+    restart: unless-stopped
+    command: ["npm", "run", "osm:refresh:loop"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://road:road@postgres:5432/road_context
+      OSM_REGIONS: ${OSM_REGIONS:-italy}
+      OSM_DATA_DIR: /app/data/osm
+      OSM_HOST_DATA_DIR: ${PWD}/data/osm
+      VALHALLA_TILE_DIR: /app/data/valhalla
+      VALHALLA_STAGING_TILE_DIR: /app/data/valhalla.next
+      VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${VALHALLA_STAGING_BUILD_HOST_TILE_DIR:-${PWD}/data/valhalla.next}
+      VALHALLA_CONTAINER_NAME: road-context-valhalla
+      OSM_REFRESH_INTERVAL_SECONDS: ${OSM_REFRESH_INTERVAL_SECONDS:-86400}
+      OSM_REFRESH_RUN_ON_START: ${OSM_REFRESH_RUN_ON_START:-false}
+      OSM_REFRESH_LOCK_TIMEOUT_SECONDS: ${OSM_REFRESH_LOCK_TIMEOUT_SECONDS:-3600}
+      OSM_REFRESH_LOCK_STALE_SECONDS: ${OSM_REFRESH_LOCK_STALE_SECONDS:-7200}
+      VALHALLA_HEALTH_URL: http://valhalla:8002/status
+      VALHALLA_HEALTH_TIMEOUT_SECONDS: ${VALHALLA_HEALTH_TIMEOUT_SECONDS:-120}
+      VALHALLA_HEALTH_INTERVAL_SECONDS: ${VALHALLA_HEALTH_INTERVAL_SECONDS:-2}
+      OSM_IMPORT_MIN_RETAIN_RATIO: ${OSM_IMPORT_MIN_RETAIN_RATIO:-0.2}
+      OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK: ${OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK:-20}
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valhalla:
+        condition: service_started
+    networks:
+      - road-context
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: road_context
+      POSTGRES_USER: road
+      POSTGRES_PASSWORD: road
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    networks:
+      - road-context
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U road -d road_context"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  valhalla:
+    image: ${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}
+    container_name: road-context-valhalla
+    entrypoint: ["valhalla_service"]
+    command: ["/custom_files/valhalla.json", "1"]
+    restart: unless-stopped
+    environment:
+      server_threads: 2
+      serve_tiles: "true"
+      build_elevation: "false"
+      build_admins: "false"
+      build_time_zones: "false"
+      force_rebuild: "false"
+    volumes:
+      - ${VALHALLA_TILE_DIR:-./data/valhalla}:/custom_files
+    ports:
+      - "127.0.0.1:8002:8002"
+    networks:
+      - road-context
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8002/status >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+
+networks:
+  road-context:
+    driver: bridge

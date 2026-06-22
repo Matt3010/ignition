@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, master, develop]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -70,3 +71,104 @@ jobs:
           if [[ "$found" -eq 0 ]]; then
             echo "No Swift files found"
           fi
+
+  publish-image:
+    name: Publish application image
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' ||
+       github.ref == 'refs/heads/master' ||
+       startsWith(github.ref, 'refs/tags/v'))
+    needs: [backend, swift-syntax]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Normalize image name
+        id: image
+        shell: bash
+        run: |
+          image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "name=${image_name}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${image_name}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.title=Ignition road-context backend
+            org.opencontainers.image.description=Backend and OSM maintenance runtime for Ignition
+
+      - name: Build and push multi-platform image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=ignition-runtime
+          cache-to: type=gha,mode=max,scope=ignition-runtime
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify the published image
+        shell: bash
+        run: |
+          image_ref="${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          docker pull "$image_ref"
+          docker run --rm --entrypoint node "$image_ref" -e "
+            const fs = require('node:fs');
+            const required = [
+              '/app/dist/src/server.js',
+              '/app/dist/scripts/migrate.js',
+              '/app/scripts/refresh-osm.sh',
+              '/app/migrations/0001_init.sql'
+            ];
+            const missing = required.filter((file) => !fs.existsSync(file));
+            if (missing.length) {
+              console.error('Missing runtime files:', missing);
+              process.exit(1);
+            }
+            console.log('Published image contains all required runtime files');
+          "
+
+      - name: Write publish summary
+        shell: bash
+        run: |
+          {
+            echo "## Container image published"
+            echo
+            echo "**Image:** ${{ steps.image.outputs.name }}"
+            echo "**Digest:** ${{ steps.build.outputs.digest }}"
+            echo
+            echo "Use backend/docker-compose.registry.yml for a source-free deployment."
+          } >> "$GITHUB_STEP_SUMMARY"
+

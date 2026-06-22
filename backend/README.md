@@ -380,3 +380,33 @@ On the first bootstrap and every scheduled refresh the service:
 4. imports all alert files in one atomic synchronization, so alerts from one region are not deactivated while another region is imported.
 
 `OSM_REGIONS` is the only region configuration. Custom extract URLs are intentionally unsupported so every configured area follows the same reproducible Geofabrik workflow.
+
+## Immagine Docker pubblicata da GitHub Actions
+
+Dopo che i job `Backend checks` e `Swift syntax` sono passati, il workflow CI pubblica automaticamente un'immagine multi-architettura su GitHub Container Registry:
+
+```text
+ghcr.io/<owner>/<repository>:latest
+```
+
+Sono pubblicati anche i tag della branch, `sha-<commit>` e i tag SemVer quando viene creato un tag Git come `v1.2.3`. L'immagine supporta `linux/amd64` e `linux/arm64` e viene usata sia dal backend sia dal servizio `osm-refresh`.
+
+Per effettuare il deploy senza compilare i sorgenti:
+
+```bash
+cp .env.registry.example .env
+# modifica IGNITION_IMAGE con il percorso reale del package GHCR
+docker compose -f docker-compose.registry.yml pull
+docker compose -f docker-compose.registry.yml up -d
+```
+
+Il file `docker-compose.registry.yml` usa soltanto immagini precompilate: l'immagine Ignition pubblicata dal workflow, PostGIS e Valhalla. Non richiede Node.js né il repository completo sulla macchina di destinazione; servono soltanto il file Compose, il file `.env` e Docker.
+
+Se il package GHCR è privato, prima del pull è necessario autenticarsi:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
+```
+
+Per un deploy pubblico, imposta la visibilità del package su `Public` nelle impostazioni del package GitHub.
+
