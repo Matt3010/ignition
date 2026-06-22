@@ -120,4 +120,24 @@ describe("HTTP API", () => {
     expect(stored).toContain("72 km/h");
     await app.close();
   });
+  it("enforces the minimum interval for the same session", async () => {
+    const app = await buildApp(testConfig({ MIN_CLIENT_INTERVAL_MS: 1000 }));
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: validPayload,
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: { ...validPayload, timestamp: "2026-06-17T20:30:01Z" },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(429);
+    expect(second.json().error.code).toBe("TOO_MANY_REQUESTS");
+    expect(second.headers["retry-after"]).toBeDefined();
+    await app.close();
+  });
+
 });

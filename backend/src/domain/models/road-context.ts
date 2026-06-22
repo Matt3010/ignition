@@ -46,6 +46,9 @@ export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceM
   alerts: Array<{
     id: string;
     type: AlertCandidate["type"];
+    subtype: string | null;
+    capabilities: string[];
+    primaryCapability: string | null;
     distanceMeters: number;
     speedLimitKmh: number | null;
     speedLimitSource: SpeedLimitSource;

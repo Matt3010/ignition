@@ -49,10 +49,7 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
   await app.register(rateLimit, {
     max: config.RATE_LIMIT_MAX,
     timeWindow: config.RATE_LIMIT_WINDOW,
-    keyGenerator: (request) => {
-      const body = request.body as { sessionId?: string } | undefined;
-      return body?.sessionId ? `${request.ip}:${body.sessionId}` : request.ip;
-    },
+    keyGenerator: (request) => request.ip,
   });
   await app.register(swagger, {
     openapi: {
@@ -68,7 +65,7 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
   await registerErrorHandler(app);
   await registerSessionRateLimit(app);
 
-  const dependencies = createDependencies(config);
+  const dependencies = createDependencies(config, app.log);
   if (dependencies.pool) app.decorate("pgPool", dependencies.pool);
 
   const useCase = new GetRoadContextUseCase(
@@ -92,7 +89,7 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
   return app;
 }
 
-function createDependencies(config: AppConfig): {
+function createDependencies(config: AppConfig, logger: Pick<FastifyInstance["log"], "warn">): {
   provider: MockRoadContextProvider | ValhallaRoadContextProvider;
   alertRepository: AlertRepository;
   databaseEnabled: boolean;
@@ -108,7 +105,7 @@ function createDependencies(config: AppConfig): {
 
   const pool = createPool(config);
   return {
-    provider: new ValhallaRoadContextProvider(new ValhallaClient(config)),
+    provider: new ValhallaRoadContextProvider(new ValhallaClient(config), logger),
     alertRepository: new PostgisAlertRepository(pool),
     databaseEnabled: true,
     pool,

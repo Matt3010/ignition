@@ -18,7 +18,7 @@ interface RoadContextBody {
 
 describe("mock test drive", () => {
   it("keeps a stable road context across a short ride and moves alerts closer", async () => {
-    const app = await buildApp(testConfig());
+    const app = await buildApp(testConfig({ MIN_CLIENT_INTERVAL_MS: 1 }));
     const sessionId = "550e8400-e29b-41d4-a716-446655440010";
     const samples = [
       { latitude: 45.0, speedKmh: 45, timestamp: "2026-06-17T20:30:00Z", scenario: "limit50" },
@@ -42,6 +42,7 @@ describe("mock test drive", () => {
       });
       expect(response.statusCode).toBe(200);
       responses.push(response.json());
+      await new Promise((resolve) => setTimeout(resolve, 2));
     }
 
     expect(responses.map((response) => response.matched)).toEqual([true, true, true]);

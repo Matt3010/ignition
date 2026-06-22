@@ -80,11 +80,26 @@ try {
 }
 
 async function parseArgs(args: string[]): Promise<CliOptions> {
+  const supported = new Set(["file", "source", "version", "deactivate-stale"]);
   const result = new Map<string, string>();
+
   for (let index = 0; index < args.length; index += 2) {
-    result.set(args[index].replace(/^--/, ""), args[index + 1]);
+    const flag = args[index];
+    const value = args[index + 1];
+    if (!flag?.startsWith("--")) throw new Error(`Invalid argument: ${flag ?? "<missing>"}`);
+    if (value === undefined || value.startsWith("--")) throw new Error(`Missing value for ${flag}`);
+
+    const key = flag.slice(2);
+    if (!supported.has(key)) throw new Error(`Unknown option: ${flag}`);
+    if (result.has(key)) throw new Error(`Duplicate option: ${flag}`);
+    result.set(key, value);
   }
+
   const file = result.get("file") ?? (await defaultOsmAlertFile());
+  if (!file.toLowerCase().endsWith(".osm") && !file.toLowerCase().endsWith(".xml")) {
+    throw new Error(`Unsupported OSM alert file: ${file}. Expected .osm or .xml`);
+  }
+
   return {
     file,
     source: result.get("source") ?? "osm",
@@ -97,19 +112,13 @@ async function parseArgs(args: string[]): Promise<CliOptions> {
 }
 
 async function defaultOsmAlertFile(): Promise<string> {
-  const candidates = [
-    join(config.OSM_DATA_DIR, `${config.OSM_REGION}.alerts.osm`),
-    join(config.OSM_DATA_DIR, `${config.OSM_REGION}.osm`),
-  ];
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      // Try the next supported OSM alert source.
-    }
+  const candidate = join(config.OSM_DATA_DIR, `${config.OSM_REGION}.alerts.osm`);
+  try {
+    await access(candidate);
+    return candidate;
+  } catch {
+    throw new Error(`Missing filtered OSM alert source: ${candidate}. Run npm run osm:refresh first.`);
   }
-  throw new Error(`Missing OSM alert source. Expected ${candidates.join(" or ")}`);
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {

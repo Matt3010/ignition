@@ -31,8 +31,15 @@ interface ValhallaTraceAttributes {
   matched_points?: ValhallaMatchedPoint[];
 }
 
+interface WarningLogger {
+  warn(data: Record<string, unknown>, message: string): void;
+}
+
 export class ValhallaRoadContextProvider implements RoadContextProvider {
-  constructor(private readonly client: ValhallaGateway) {}
+  constructor(
+    private readonly client: ValhallaGateway,
+    private readonly logger?: WarningLogger,
+  ) {}
 
   async match(input: Parameters<RoadContextProvider["match"]>[0]): Promise<RoadMatch> {
     try {
@@ -63,7 +70,14 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
         previousState: input.previousState,
       });
       return { ...base, confidence };
-    } catch {
+    } catch (error) {
+      this.logger?.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          sessionId: input.sample.sessionId,
+        },
+        "Valhalla road match failed",
+      );
       return unmatched(input.sample, 0);
     }
   }

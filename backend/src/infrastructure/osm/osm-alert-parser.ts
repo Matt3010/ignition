@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Direction, RoadAlert } from "../../domain/models/alert.js";
 import {
+  haversineMeters,
   initialBearing,
   normalizeCourse,
 } from "../../domain/services/geo.js";
@@ -177,6 +178,7 @@ function alertFromElement(
         relation: false,
         attributes,
       }),
+      positionApproximate: osmType === "way",
       attributes,
     });
   }
@@ -198,6 +200,7 @@ function alertFromElement(
         attributes,
         base: 0.75,
       }),
+      positionApproximate: osmType === "way",
       attributes,
     });
   }
@@ -219,6 +222,7 @@ function alertFromElement(
         attributes,
         base: 0.72,
       }),
+      positionApproximate: osmType === "way",
       attributes,
     });
   }
@@ -244,6 +248,7 @@ function buildAlert(input: {
   confidence: number;
   osmRelationId?: string | null;
   originalOsmIds?: string[];
+  positionApproximate?: boolean;
   attributes?: Record<string, string>;
 }): RoadAlert {
   const effectiveTags = input.effectiveTags ?? normalizeLifecycleTags(input.tags);
@@ -279,7 +284,7 @@ function buildAlert(input: {
     osmUid: input.attributes?.uid ?? null,
     sourceTags: input.tags,
     fixme: input.tags.fixme ?? null,
-    positionApproximate: isApproximatePosition(input.tags),
+    positionApproximate: Boolean(input.positionApproximate || isApproximatePosition(input.tags)),
     operationalStatus: operationalStatusFromTags(input.tags),
     statusReason: operationalStatusReason(input.tags),
     osmPresenceStatus: "present",
@@ -496,10 +501,40 @@ function wayCenter(
     .map((ref) => nodes.get(ref))
     .filter((node): node is OsmNode => Boolean(node));
   if (!wayNodes.length) return null;
-  return {
-    latitude: wayNodes.reduce((sum, node) => sum + node.latitude, 0) / wayNodes.length,
-    longitude: wayNodes.reduce((sum, node) => sum + node.longitude, 0) / wayNodes.length,
-  };
+  if (wayNodes.length === 1) {
+    return { latitude: wayNodes[0].latitude, longitude: wayNodes[0].longitude };
+  }
+
+  const segments = wayNodes.slice(1).map((node, index) => ({
+    from: wayNodes[index],
+    to: node,
+    length: haversineMeters(
+      wayNodes[index].latitude,
+      wayNodes[index].longitude,
+      node.latitude,
+      node.longitude,
+    ),
+  }));
+  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+  if (totalLength <= 0) {
+    return { latitude: wayNodes[0].latitude, longitude: wayNodes[0].longitude };
+  }
+
+  const target = totalLength / 2;
+  let traversed = 0;
+  for (const segment of segments) {
+    if (traversed + segment.length >= target) {
+      const fraction = segment.length === 0 ? 0 : (target - traversed) / segment.length;
+      return {
+        latitude: segment.from.latitude + (segment.to.latitude - segment.from.latitude) * fraction,
+        longitude: segment.from.longitude + (segment.to.longitude - segment.from.longitude) * fraction,
+      };
+    }
+    traversed += segment.length;
+  }
+
+  const last = wayNodes.at(-1)!;
+  return { latitude: last.latitude, longitude: last.longitude };
 }
 
 
