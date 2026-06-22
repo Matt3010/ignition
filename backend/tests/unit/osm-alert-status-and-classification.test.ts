@@ -25,6 +25,31 @@ describe("OSM alert status and classification", () => {
     expect(alerts[2]).toMatchObject({ operationalStatus: "notOperational", statusReason: "removed=yes" });
   });
 
+  it("imports lifecycle-prefixed alerts and preserves their original tags", () => {
+    const xml = `<osm version="0.6">
+      <node id="6" lat="45.005" lon="11.005"><tag k="removed:highway" v="speed_camera"/><tag k="removed:maxspeed" v="70"/></node>
+      <node id="7" lat="45.006" lon="11.006"><tag k="disused:enforcement" v="traffic_signals"/></node>
+      <node id="8" lat="45.007" lon="11.007"><tag k="demolished:highway" v="roadworks"/></node>
+    </osm>`;
+    const alerts = parseOsmAlerts(xml).alerts;
+    expect(alerts).toHaveLength(3);
+    expect(alerts[0]).toMatchObject({ type: "fixedSpeedCamera", operationalStatus: "notOperational", statusReason: "removed:highway=speed_camera", speedLimitKmh: 70 });
+    expect(alerts[0].sourceTags).toEqual({ "removed:highway": "speed_camera", "removed:maxspeed": "70" });
+    expect(alerts[1]).toMatchObject({ type: "redLightCamera", operationalStatus: "notOperational", statusReason: "disused:enforcement=traffic_signals" });
+    expect(alerts[2]).toMatchObject({ type: "roadWorks", operationalStatus: "notOperational", statusReason: "demolished:highway=roadworks" });
+  });
+
+  it("classifies standalone traffic_signals=red_light_camera tags", () => {
+    const xml = `<osm version="0.6">
+      <node id="20" lat="45.01" lon="11.01"><tag k="highway" v="traffic_signals"/><tag k="traffic_signals" v="red_light_camera"/></node>
+      <node id="21" lat="45.02" lon="11.02"><tag k="disused:traffic_signals" v="red_light_camera"/></node>
+    </osm>`;
+    const alerts = parseOsmAlerts(xml).alerts;
+    expect(alerts).toHaveLength(2);
+    expect(alerts[0]).toMatchObject({ type: "redLightCamera", operationalStatus: "unknown" });
+    expect(alerts[1]).toMatchObject({ type: "redLightCamera", operationalStatus: "notOperational", statusReason: "disused:traffic_signals=red_light_camera" });
+  });
+
   it("classifies traffic-signal enforcement as red-light cameras without dropping them", () => {
     const xml = `<osm version="0.6">
       <node id="1" lat="45" lon="11"><tag k="highway" v="speed_camera"/><tag k="enforcement" v="traffic_signals"/></node>

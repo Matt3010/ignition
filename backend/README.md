@@ -98,7 +98,7 @@ Comandi:
 make migrate
 ```
 
-La ricerca alert usa `ST_DWithin` e `ST_DistanceSphere`, filtra record inattivi/scaduti, considera direzione/bearing/roadId e ordina per distanza.
+La ricerca alert usa `ST_DWithin` e `ST_DistanceSphere`, restituisce tutti i record nel raggio (anche non operativi o non più presenti nell’ultimo import), esclude soltanto quelli confermati dietro al veicolo e ordina per distanza.
 
 ## Importazione Dati
 
@@ -128,7 +128,9 @@ npm run import:osm-alerts -- --file data/osm/italy.alerts.osm
 Il parser OSM importa solo dati statici realmente presenti:
 
 - `highway=speed_camera`, `enforcement=maxspeed` e `enforcement=average_speed` -> `fixedSpeedCamera`
+- le equivalenti forme lifecycle (`disused:*`, `abandoned:*`, `removed:*`, `demolished:*`, `razed:*`) vengono importate, normalizzate e marcate `notOperational`, conservando i tag OSM originali
 - `enforcement=traffic_signals` -> `redLightCamera`
+- `traffic_signals=red_light_camera` -> `redLightCamera` (anche senza `enforcement=*`)
 - `enforcement=access` -> `accessControl`
 - `enforcement=maxweight` -> `weightControl`
 - altri `enforcement=*` -> `genericEnforcement`

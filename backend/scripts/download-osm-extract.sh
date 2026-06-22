@@ -53,6 +53,7 @@ filters=(
   n/speed_camera=yes w/speed_camera=yes
   n/camera:type=speed w/camera:type=speed
   n/enforcement w/enforcement r/enforcement
+  nwr/traffic_signals=red_light_camera
   n/highway=construction w/highway=construction
   n/construction w/construction
   n/highway=roadworks w/highway=roadworks
@@ -61,6 +62,25 @@ filters=(
   n/hazard:conditional w/hazard:conditional r/hazard:conditional
   n/highway=hazard w/highway=hazard
 )
+
+# Include only lifecycle-prefixed forms of alert tags. Avoid filtering every
+# disused/removed OSM object (buildings, shops, amenities, etc.).
+for lifecycle in disused abandoned removed demolished razed; do
+  filters+=(
+    "nw/${lifecycle}:highway=speed_camera"
+    "nw/${lifecycle}:speed_camera=yes"
+    "nw/${lifecycle}:camera:type=speed"
+    "nwr/${lifecycle}:enforcement"
+    "nwr/${lifecycle}:traffic_signals=red_light_camera"
+    "nw/${lifecycle}:highway=construction"
+    "nw/${lifecycle}:construction"
+    "nw/${lifecycle}:highway=roadworks"
+    "nw/${lifecycle}:roadworks=yes"
+    "nwr/${lifecycle}:hazard"
+    "nwr/${lifecycle}:hazard:conditional"
+    "nw/${lifecycle}:highway=hazard"
+  )
+done
 
 if command -v osmium >/dev/null 2>&1; then
   osmium tags-filter "$target" "${filters[@]}" --overwrite --output "$alerts_target"

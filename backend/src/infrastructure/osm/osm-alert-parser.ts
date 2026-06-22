@@ -102,8 +102,6 @@ function alertFromRelation(
   ways: Map<string, OsmWay>,
   source: string,
 ): RoadAlert | null {
-  const type = enforcementAlertType(relation.tags.enforcement);
-  if (!type) return null;
   const deviceNode =
     relationNode(relation, nodes, "device") ?? relationNode(relation, nodes, "via");
   const fromNode =
@@ -115,7 +113,10 @@ function alertFromRelation(
   const position = deviceNode ?? fromNode ?? toNode ?? relationWayCenter(relation, nodes, ways);
   if (!position) return null;
   const tags = { ...(deviceNode?.tags ?? {}), ...relation.tags };
+  const effectiveTags = normalizeLifecycleTags(tags);
   const bearing = relationBearing(fromNode, deviceNode, toNode);
+  const type = alertTypeFromTags(effectiveTags);
+  if (!type) return null;
   return buildAlert({
     osmType: "relation",
     osmId: relation.id,
@@ -123,6 +124,7 @@ function alertFromRelation(
     latitude: position.latitude,
     longitude: position.longitude,
     tags,
+    effectiveTags,
     source,
     roadId: relationRoadId(relation),
     direction: bearing === null ? "unknown" : "forward",
@@ -150,8 +152,9 @@ function alertFromElement(
   roadId: string | null,
   attributes: Record<string, string>,
 ): RoadAlert | null {
-  const enforcementType = enforcementAlertType(tags.enforcement);
-  if (enforcementType || isSpeedCamera(tags)) {
+  const effectiveTags = normalizeLifecycleTags(tags);
+  const enforcementType = alertTypeFromTags(effectiveTags);
+  if (enforcementType || isSpeedCamera(effectiveTags)) {
     return buildAlert({
       osmType,
       osmId,
@@ -159,6 +162,7 @@ function alertFromElement(
       latitude,
       longitude,
       tags,
+      effectiveTags,
       source,
       roadId,
       confidence: calculateOsmConfidence(tags, {
@@ -170,7 +174,7 @@ function alertFromElement(
       attributes,
     });
   }
-  if (isRoadWorks(tags)) {
+  if (isRoadWorks(effectiveTags)) {
     return buildAlert({
       osmType,
       osmId,
@@ -178,6 +182,7 @@ function alertFromElement(
       latitude,
       longitude,
       tags,
+      effectiveTags,
       source,
       roadId,
       confidence: calculateOsmConfidence(tags, {
@@ -190,7 +195,7 @@ function alertFromElement(
       attributes,
     });
   }
-  if (isRoadHazard(tags)) {
+  if (isRoadHazard(effectiveTags)) {
     return buildAlert({
       osmType,
       osmId,
@@ -198,6 +203,7 @@ function alertFromElement(
       latitude,
       longitude,
       tags,
+      effectiveTags,
       source,
       roadId,
       confidence: calculateOsmConfidence(tags, {
@@ -220,6 +226,7 @@ function buildAlert(input: {
   latitude: number;
   longitude: number;
   tags: Record<string, string>;
+  effectiveTags?: Record<string, string>;
   source: string;
   roadId: string | null;
   direction?: Direction;
@@ -230,8 +237,9 @@ function buildAlert(input: {
   originalOsmIds?: string[];
   attributes?: Record<string, string>;
 }): RoadAlert {
+  const effectiveTags = input.effectiveTags ?? normalizeLifecycleTags(input.tags);
   const maxspeed = parseMaxspeed(
-    input.tags.maxspeed ?? input.tags["maxspeed:forward"] ?? input.tags["maxspeed:backward"],
+    effectiveTags.maxspeed ?? effectiveTags["maxspeed:forward"] ?? effectiveTags["maxspeed:backward"],
   );
   return {
     id: deterministicUuid(`${input.source}:${input.osmType}:${input.osmId}:${input.type}`),
@@ -240,9 +248,9 @@ function buildAlert(input: {
     longitude: input.longitude,
     speedLimitKmh: maxspeed.value,
     speedLimitSource: maxspeed.source,
-    direction: input.direction ?? parseDirection(input.tags.direction),
-    bearing: input.bearing ?? parseBearing(input.tags),
-    directionBearings: input.directionBearings ?? parseBearings(input.tags),
+    direction: input.direction ?? parseDirection(effectiveTags.direction),
+    bearing: input.bearing ?? parseBearing(effectiveTags),
+    directionBearings: input.directionBearings ?? parseBearings(effectiveTags),
     roadId: input.roadId,
     confidence: input.confidence,
     active: true,
@@ -476,12 +484,46 @@ function wayCenter(
   };
 }
 
+
+const lifecyclePrefixes = ["disused", "abandoned", "removed", "demolished", "razed"] as const;
+
+function normalizeLifecycleTags(tags: Record<string, string>): Record<string, string> {
+  const normalized = { ...tags };
+  for (const prefix of lifecyclePrefixes) {
+    for (const [key, value] of Object.entries(tags)) {
+      const marker = `${prefix}:`;
+      if (key.startsWith(marker)) {
+        const baseKey = key.slice(marker.length);
+        if (baseKey && normalized[baseKey] === undefined) normalized[baseKey] = value;
+      }
+    }
+  }
+  return normalized;
+}
+
+function lifecycleReason(tags: Record<string, string>): string | null {
+  for (const prefix of lifecyclePrefixes) {
+    const match = Object.entries(tags).find(([key]) => key.startsWith(`${prefix}:`));
+    if (match) return `${match[0]}=${match[1]}`;
+  }
+  return null;
+}
+
 function isSpeedCamera(tags: Record<string, string>): boolean {
   return (
     tags.highway === "speed_camera" ||
     tags["speed_camera"] === "yes" ||
     tags["camera:type"] === "speed"
   );
+}
+
+function isRedLightCamera(tags: Record<string, string>): boolean {
+  return tags.traffic_signals?.trim().toLowerCase() === "red_light_camera";
+}
+
+function alertTypeFromTags(tags: Record<string, string>): RoadAlert["type"] | null {
+  if (isRedLightCamera(tags)) return "redLightCamera";
+  return enforcementAlertType(tags.enforcement);
 }
 
 function enforcementAlertType(value: string | undefined): RoadAlert["type"] | null {
@@ -628,6 +670,7 @@ function operationalStatusFromTags(tags: Record<string, string>): "operational" 
   const removed = tags.removed?.trim().toLowerCase();
   const abandoned = tags.abandoned?.trim().toLowerCase();
 
+  if (lifecycleReason(tags)) return "notOperational";
   if (isNegativeFixme(tags.fixme)) return "notOperational";
   if (working && negativeValues.has(working)) return "notOperational";
   if (disabled && positiveValues.has(disabled)) return "notOperational";
@@ -643,6 +686,8 @@ function operationalStatusFromTags(tags: Record<string, string>): "operational" 
 }
 
 function operationalStatusReason(tags: Record<string, string>): string | null {
+  const lifecycle = lifecycleReason(tags);
+  if (lifecycle) return lifecycle;
   if (tags.fixme) return tags.fixme;
   for (const key of ["working", "disabled", "operational", "status", "disused", "removed", "abandoned"] as const) {
     if (tags[key] !== undefined) return `${key}=${tags[key]}`;
