@@ -433,3 +433,9 @@ VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${PWD}/data/valhalla.next
 ```
 
 Non impostare questa variabile nel file `.env`: un valore relativo come `./data/valhalla.next` verrebbe passato a `docker run -v` e interpretato come nome di volume. Avvia i comandi dalla directory che contiene il relativo `docker-compose.yml`; in questo modo il percorso assoluto viene calcolato automaticamente e il deploy resta portabile tra server diversi.
+
+### Retry senza nuovo download OSM
+
+Se una build Valhalla viene interrotta o fallisce dopo la preparazione dei dati OSM, la directory di staging `data/valhalla.next` rimane presente. Al tentativo successivo il maintenance valida e riutilizza i file `<regione>.osm.pbf` e `<regione>.alerts.osm`, evitando di scaricare e filtrare nuovamente gli stessi dati. Un aggiornamento periodico completato rimuove invece lo staging e il ciclo successivo scarica normalmente gli estratti aggiornati.
+
+Gli eventi principali sono `osm_download_completed`, `osm_download_reused`, `osm_alert_extraction_completed`, `osm_alerts_reused` e `osm_region_prepared`.

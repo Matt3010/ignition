@@ -88,3 +88,7 @@ VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${PWD}/data/valhalla.next
 ```
 
 Non impostare questa variabile nel file `.env`: un valore relativo come `./data/valhalla.next` verrebbe passato a `docker run -v` e interpretato come nome di volume. Avvia i comandi dalla directory che contiene il relativo `docker-compose.yml`; in questo modo il percorso assoluto viene calcolato automaticamente e il deploy resta portabile tra server diversi.
+
+### Ripresa dopo un errore di build
+
+La presenza di `data/valhalla.next` identifica un tentativo incompleto. Al riavvio `osm-refresh` riutilizza i PBF e gli estratti alert già validati invece di riscaricarli. Dopo un'attivazione riuscita lo staging viene rimosso, quindi il successivo aggiornamento pianificato scarica dati nuovi.

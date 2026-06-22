@@ -13,6 +13,7 @@ async function fixture(
     invalidStaging?: boolean;
     healthFails?: boolean;
     initialTiles?: boolean;
+    buildFails?: boolean;
   } = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "ignition-refresh-"));
@@ -44,7 +45,11 @@ exit 0
     `#!/usr/bin/env bash
 set -e
 echo "$*" >> "$FAKE_NPM_LOG"
+if [[ "$1 $2" == "run osm:download" ]]; then
+  echo "reuse=\${OSM_REUSE_EXISTING_DOWNLOADS:-false}" >> "$FAKE_NPM_LOG"
+fi
 if [[ "$1 $2" == "run valhalla:build" ]]; then
+  if [[ "${options.buildFails ?? false}" == "true" ]]; then exit 10; fi
   mkdir -p "$VALHALLA_TILE_DIR/valhalla_tiles"
   if [[ "${options.invalidStaging ?? false}" != "true" ]]; then
     echo '{}' > "$VALHALLA_TILE_DIR/valhalla.json"
@@ -194,4 +199,20 @@ describeOnUnix("OSM refresh script", () => {
       await rm(test.root, { recursive: true, force: true });
     }
   });
+
+  it("reuses prepared OSM inputs when retrying an existing staging build", async () => {
+    const test = await fixture({ buildFails: true });
+    try {
+      await mkdir(test.env.VALHALLA_STAGING_TILE_DIR, { recursive: true });
+      await expect(
+        execFileAsync("bash", [script], { cwd: process.cwd(), env: test.env }),
+      ).rejects.toThrow();
+      const npmLog = await readFile(test.env.FAKE_NPM_LOG, "utf8");
+      expect(npmLog).toContain("run osm:download");
+      expect(npmLog).toContain("reuse=true");
+    } finally {
+      await rm(test.root, { recursive: true, force: true });
+    }
+  });
+
 });

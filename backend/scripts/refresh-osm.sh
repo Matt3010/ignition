@@ -116,7 +116,7 @@ move_directory_contents() {
     # happen after an interrupted activation or rollback and would make mv
     # merge directories or fail when file types differ.
     rm -rf -- "$target" || return 1
-    mv -- "$entry" "$target" || return 1
+    mv -T -- "$entry" "$target" || return 1
   done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
 }
 
@@ -162,8 +162,25 @@ rollback_tiles() {
 echo "{\"event\":\"osm_refresh_started\",\"region\":\"$OSM_REGION_LABEL\",\"tileDir\":\"$(json_escape "$VALHALLA_TILE_DIR")\"}"
 acquire_lock
 require_container_control
-npm run osm:download
+
+# A surviving staging directory means the previous run reached preparation or
+# tile construction and then failed/interrupted. In that case reuse the
+# already validated OSM inputs instead of downloading gigabytes again. A
+# successful activation removes the staging directory, so scheduled refreshes
+# still fetch fresh extracts.
+resume_existing_osm=false
+if [[ -d "$VALHALLA_STAGING_TILE_DIR" ]]; then
+  resume_existing_osm=true
+fi
 mkdir -p "$VALHALLA_STAGING_TILE_DIR"
+
+if [[ "$resume_existing_osm" == "true" ]]; then
+  echo "{\"event\":\"osm_refresh_reusing_prepared_osm\",\"region\":\"$OSM_REGION_LABEL\"}"
+  OSM_REUSE_EXISTING_DOWNLOADS=true npm run osm:download
+else
+  npm run osm:download
+fi
+
 echo "{\"event\":\"osm_refresh_staging_ready\",\"region\":\"$OSM_REGION_LABEL\",\"resumeEnabled\":true}"
 VALHALLA_TILE_DIR="$VALHALLA_STAGING_TILE_DIR" \
   VALHALLA_BUILD_HOST_TILE_DIR="$VALHALLA_STAGING_BUILD_HOST_TILE_DIR" \

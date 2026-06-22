@@ -21,7 +21,15 @@ describe("download-osm-extract.sh", () => {
     const docker = path.join(bin, "docker");
     await writeFile(
       docker,
-      `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "$DOCKER_LOG"\n`,
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+if [[ "$*" == *"tags-filter"* ]]; then
+  out=""
+  while [[ $# -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done
+  printf 'ok' > "$OSM_DATA_DIR/\${out##*/}"
+fi
+`,
     );
     await chmod(curl, 0o755);
     await chmod(docker, 0o755);
@@ -55,7 +63,18 @@ describe("download-osm-extract.sh", () => {
       path.join(bin, "curl"),
       `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "$CURL_LOG"\nout=""\nwhile [[ $# -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done\nmkdir -p "$(dirname "$out")"\nprintf 'ok' > "$out"\n`,
     );
-    await writeFile(path.join(bin, "docker"), `#!/usr/bin/env bash\nexit 0\n`);
+    await writeFile(
+      path.join(bin, "docker"),
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *"tags-filter"* ]]; then
+  out=""
+  while [[ $# -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done
+  printf 'ok' > "$OSM_DATA_DIR/\${out##*/}"
+fi
+exit 0
+`,
+    );
     await chmod(path.join(bin, "curl"), 0o755);
     await chmod(path.join(bin, "docker"), 0o755);
 
@@ -105,7 +124,18 @@ describe("download-osm-extract.sh", () => {
       path.join(bin, "curl"),
       `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\n' "$*" > "$CURL_LOG"\nout=""\nwhile [[ $# -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done\nprintf 'valid' > "$out"\n`,
     );
-    await writeFile(path.join(bin, "docker"), `#!/usr/bin/env bash\nexit 0\n`);
+    await writeFile(
+      path.join(bin, "docker"),
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *"tags-filter"* ]]; then
+  out=""
+  while [[ $# -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done
+  printf 'ok' > "$OSM_DATA_DIR/\${out##*/}"
+fi
+exit 0
+`,
+    );
     await chmod(path.join(bin, "curl"), 0o755);
     await chmod(path.join(bin, "docker"), 0o755);
 
@@ -185,6 +215,59 @@ describe("download-osm-extract.sh", () => {
     expect(result.stderr).toContain("unexpectedly small");
     await expect(readFile(path.join(dataDir, "italy.download.osm.pbf"))).rejects.toThrow();
     await expect(readFile(path.join(dataDir, "italy.osm.pbf"))).rejects.toThrow();
+  });
+
+
+  it("reuses validated downloads and alert extracts during a build retry", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "osm-download-reuse-"));
+    const bin = path.join(root, "bin");
+    const dataDir = path.join(root, "data");
+    const dockerLog = path.join(root, "docker.log");
+    const curlLog = path.join(root, "curl.log");
+    await Promise.all([mkdir(bin, { recursive: true }), mkdir(dataDir, { recursive: true })]);
+    const target = path.join(dataDir, "italy.osm.pbf");
+    const alerts = path.join(dataDir, "italy.alerts.osm");
+    await writeFile(target, "valid-pbf");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeFile(alerts, "valid-alerts");
+    await writeFile(
+      path.join(bin, "curl"),
+      `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CURL_LOG"
+exit 99
+`,
+    );
+    await writeFile(
+      path.join(bin, "docker"),
+      `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+exit 0
+`,
+    );
+    await chmod(path.join(bin, "curl"), 0o755);
+    await chmod(path.join(bin, "docker"), 0o755);
+
+    const result = spawnSync("bash", ["scripts/download-osm-extract.sh"], {
+      cwd: backendRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:/usr/bin:/bin`,
+        CURL_LOG: curlLog,
+        DOCKER_LOG: dockerLog,
+        OSM_DATA_DIR: dataDir,
+        OSM_REGIONS: "italy",
+        OSM_DOWNLOAD_MIN_BYTES: "1",
+        OSM_REUSE_EXISTING_DOWNLOADS: "true",
+      },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('"event":"osm_download_reused"');
+    expect(result.stdout).toContain('"event":"osm_alerts_reused"');
+    await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+    const dockerCalls = await readFile(dockerLog, "utf8");
+    expect(dockerCalls).not.toContain("tags-filter");
   });
 
 });
