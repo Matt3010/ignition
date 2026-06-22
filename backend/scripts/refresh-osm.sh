@@ -111,7 +111,12 @@ move_directory_contents() {
   local source="$1" destination="$2"
   mkdir -p "$source" "$destination"
   while IFS= read -r -d '' entry; do
-    mv -- "$entry" "$destination/" || return 1
+    local target="$destination/$(basename "$entry")"
+    # Be defensive against a stale file/directory with the same name. This can
+    # happen after an interrupted activation or rollback and would make mv
+    # merge directories or fail when file types differ.
+    rm -rf -- "$target" || return 1
+    mv -- "$entry" "$target" || return 1
   done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
 }
 

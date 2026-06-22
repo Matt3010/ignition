@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -133,10 +133,10 @@ describe("download-osm-extract.sh", () => {
     const root = await mkdtemp(path.join(tmpdir(), "osm-download-resume-"));
     const bin = path.join(root, "bin");
     const dataDir = path.join(root, "data");
-    await import("node:fs/promises").then(({ mkdir }) => {
-      mkdir(bin, { recursive: true });
-      mkdir(dataDir, { recursive: true });
-    });
+    await Promise.all([
+      mkdir(bin, { recursive: true }),
+      mkdir(dataDir, { recursive: true }),
+    ]);
     const partial = path.join(dataDir, "italy.download.osm.pbf");
     await writeFile(partial, "partial-content");
     await writeFile(path.join(bin, "curl"), `#!/usr/bin/env bash\nexit 7\n`);
