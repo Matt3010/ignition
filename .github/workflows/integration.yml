@@ -53,17 +53,32 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
+      - name: Read tool versions
+        id: tool-versions
+        shell: bash
+        run: |
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "npm=$(npm --version)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore installed dependencies
+        id: node-modules-cache
+        uses: actions/cache@v5
+        with:
+          path: backend/node_modules
+          key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.tool-versions.outputs.node }}-${{ steps.tool-versions.outputs.npm }}-${{ hashFiles('backend/package-lock.json') }}
+
       - name: Install dependencies
-        run: npm ci
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Build
         run: npm run build
@@ -96,17 +111,32 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
+      - name: Read tool versions
+        id: tool-versions
+        shell: bash
+        run: |
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "npm=$(npm --version)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore installed dependencies
+        id: node-modules-cache
+        uses: actions/cache@v5
+        with:
+          path: backend/node_modules
+          key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.tool-versions.outputs.node }}-${{ steps.tool-versions.outputs.npm }}-${{ hashFiles('backend/package-lock.json') }}
+
       - name: Install dependencies
-        run: npm ci
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Pull pinned Valhalla image
         run: docker pull "${VALHALLA_DOCKER_IMAGE}"
@@ -152,7 +182,7 @@ jobs:
 
       - name: Publish failure logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: valhalla-ci-logs
           path: backend/valhalla-ci.log
