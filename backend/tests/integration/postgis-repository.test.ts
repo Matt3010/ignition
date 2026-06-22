@@ -16,6 +16,10 @@ describe("PostGIS alert repository", () => {
     });
     expect(calls[0].sql).toContain("ST_DWithin");
     expect(calls[0].sql).toContain("ST_DistanceSphere");
+    expect(calls[0].sql).toContain("active = true");
+    expect(calls[0].sql).toContain("osm_presence_status = 'present'");
+    expect(calls[0].sql).toContain("valid_from is null or valid_from <= now()");
+    expect(calls[0].sql).toContain("valid_until is null or valid_until >= now()");
     expect(calls[0].values).toEqual([11, 45, 1000]);
   });
 

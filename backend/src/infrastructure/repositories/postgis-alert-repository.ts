@@ -20,11 +20,15 @@ export class PostgisAlertRepository implements AlertRepository {
         original_osm_ids, created_at, updated_at,
         ST_DistanceSphere(geometry, ST_SetSRID(ST_MakePoint($1, $2), 4326)) as distance_meters
       from road_alerts
-      where ST_DWithin(
-        geometry::geography,
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-        $3
-      )
+      where active = true
+        and osm_presence_status = 'present'
+        and (valid_from is null or valid_from <= now())
+        and (valid_until is null or valid_until >= now())
+        and ST_DWithin(
+          geometry::geography,
+          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+          $3
+        )
       order by distance_meters asc
       `,
       [input.longitude, input.latitude, input.radiusMeters],

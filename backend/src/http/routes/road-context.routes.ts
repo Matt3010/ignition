@@ -18,6 +18,8 @@ export async function registerRoadContextRoutes(
         response: {
           200: zodToJsonSchema(roadContextResponseSchema),
           400: zodToJsonSchema(normalizedErrorSchema),
+          409: zodToJsonSchema(normalizedErrorSchema),
+          429: zodToJsonSchema(normalizedErrorSchema),
           500: zodToJsonSchema(normalizedErrorSchema),
         },
       },

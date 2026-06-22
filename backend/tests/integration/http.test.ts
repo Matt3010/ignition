@@ -140,6 +140,44 @@ describe("HTTP API", () => {
     await app.close();
   });
 
+  it("does not consume the session interval when semantic validation fails", async () => {
+    const app = await buildApp(testConfig({ MIN_CLIENT_INTERVAL_MS: 10_000, MAX_GPS_ACCURACY_METERS: 10 }));
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: { ...validPayload, horizontalAccuracyMeters: 20 },
+    });
+    const valid = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: validPayload,
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(valid.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("rejects an out-of-order GPS sample with conflict status", async () => {
+    const app = await buildApp(testConfig({ MIN_CLIENT_INTERVAL_MS: 0 }));
+    const firstTimestamp = new Date().toISOString();
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: { ...validPayload, timestamp: firstTimestamp },
+    });
+    const outOfOrder = await app.inject({
+      method: "POST",
+      url: "/api/v1/road-context",
+      payload: { ...validPayload, timestamp: new Date(Date.parse(firstTimestamp) - 1_000).toISOString() },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(outOfOrder.statusCode).toBe(409);
+    expect(outOfOrder.json().error.message).toContain("non successivo");
+    await app.close();
+  });
+
 });
 
 it("rejects stale and excessively future GPS timestamps", async () => {

@@ -1,3 +1,4 @@
+import { ApplicationError } from "../errors/application-error.js";
 import type { GpsSample, SessionRoadState } from "../models/road-context.js";
 
 export class SessionTraceStore {
@@ -17,6 +18,16 @@ export class SessionTraceStore {
     this.cleanup(now);
     this.touch(sample.sessionId, now);
     const previous = this.traces.get(sample.sessionId) ?? [];
+    const sampleTime = Date.parse(sample.timestamp);
+    const latestTime = previous.length > 0 ? Date.parse(previous[previous.length - 1].timestamp) : null;
+    if (latestTime !== null && sampleTime <= latestTime) {
+      throw new ApplicationError(
+        "INVALID_REQUEST",
+        "Campione GPS non successivo all'ultimo campione elaborato",
+        409,
+        [{ path: "timestamp", previousTimestamp: previous[previous.length - 1].timestamp }],
+      );
+    }
     const next = [...previous, sample]
       .filter((item) => {
         const age = now - Date.parse(item.timestamp);

@@ -30,3 +30,27 @@ it("drops samples that are too far in the future", () => {
   });
   expect(trace).toHaveLength(0);
 });
+
+it("rejects duplicate and out-of-order samples without mutating the trace", () => {
+  const store = new SessionTraceStore(10_000, 8);
+  const baseTime = Date.now();
+  const first = { ...validPayload, timestamp: new Date(baseTime).toISOString() };
+  const second = { ...validPayload, timestamp: new Date(baseTime + 1_000).toISOString() };
+
+  store.add(first);
+  store.add(second);
+
+  expect(() => store.add({ ...validPayload, timestamp: first.timestamp })).toThrow(
+    "Campione GPS non successivo all'ultimo campione elaborato",
+  );
+  expect(() => store.add({ ...validPayload, timestamp: second.timestamp })).toThrow(
+    "Campione GPS non successivo all'ultimo campione elaborato",
+  );
+
+  const trace = store.add({ ...validPayload, timestamp: new Date(baseTime + 2_000).toISOString() });
+  expect(trace.map((sample) => sample.timestamp)).toEqual([
+    first.timestamp,
+    second.timestamp,
+    new Date(baseTime + 2_000).toISOString(),
+  ]);
+});

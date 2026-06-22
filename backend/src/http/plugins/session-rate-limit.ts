@@ -3,6 +3,7 @@ import { TtlCache } from "../../domain/services/cache.js";
 
 export async function registerSessionRateLimit(app: FastifyInstance): Promise<void> {
   const recent = new TtlCache<string, number>(app.config.MIN_CLIENT_INTERVAL_MS);
+  const reservations = new WeakMap<object, { sessionId: string; reservedAt: number }>();
 
   app.addHook("preHandler", async (request, reply) => {
     if (request.method !== "POST" || request.url !== "/api/v1/road-context") return;
@@ -22,12 +23,26 @@ export async function registerSessionRateLimit(app: FastifyInstance): Promise<vo
           error: {
             code: "TOO_MANY_REQUESTS",
             message: "Richieste troppo ravvicinate per la stessa sessione",
-            details: { retryAfterMs },
+            details: [{ retryAfterMs }],
           },
         });
       return reply;
     }
 
     recent.set(body.sessionId, now);
+    reservations.set(request, { sessionId: body.sessionId, reservedAt: now });
+  });
+
+  app.addHook("onError", async (request) => {
+    const reservation = reservations.get(request);
+    if (!reservation) return;
+    if (recent.get(reservation.sessionId) === reservation.reservedAt) {
+      recent.delete(reservation.sessionId);
+    }
+    reservations.delete(request);
+  });
+
+  app.addHook("onResponse", async (request) => {
+    reservations.delete(request);
   });
 }

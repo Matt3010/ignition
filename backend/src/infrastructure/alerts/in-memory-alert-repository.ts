@@ -6,7 +6,9 @@ export class InMemoryAlertRepository implements AlertRepository {
   constructor(private alerts: RoadAlert[] = []) {}
 
   async findNearby(input: { latitude: number; longitude: number; radiusMeters: number }): Promise<AlertCandidate[]> {
+    const now = Date.now();
     return this.alerts
+      .filter((alert) => isCurrentlyActive(alert, now))
       .map((alert) => ({
         ...alert,
         distanceMeters: haversineMeters(input.latitude, input.longitude, alert.latitude, alert.longitude),
@@ -24,4 +26,12 @@ export class InMemoryAlertRepository implements AlertRepository {
   async health(): Promise<"up" | "down"> {
     return "up";
   }
+}
+
+function isCurrentlyActive(alert: RoadAlert, now: number): boolean {
+  if (!alert.active) return false;
+  if ((alert.osmPresenceStatus ?? "present") !== "present") return false;
+  if (alert.validFrom && alert.validFrom.getTime() > now) return false;
+  if (alert.validUntil && alert.validUntil.getTime() < now) return false;
+  return true;
 }
