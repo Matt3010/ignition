@@ -17,8 +17,10 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment:
+      NODE_ENV: ${NODE_ENV:-production}
       HOST: 0.0.0.0
-      DATABASE_URL: postgres://road:road@postgres:5432/road_context
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-road}:${POSTGRES_PASSWORD:-road}@postgres:5432/${POSTGRES_DB:-road_context}
       VALHALLA_BASE_URL: http://valhalla:8002
       ROAD_CONTEXT_PROVIDER: valhalla
       REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-5000}
@@ -77,8 +79,8 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "osm:refresh:loop"]
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://road:road@postgres:5432/road_context
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-road}:${POSTGRES_PASSWORD:-road}@postgres:5432/${POSTGRES_DB:-road_context}
       OSM_REGIONS: ${OSM_REGIONS:-italy}
       OSM_DATA_DIR: /app/data/osm
       OSM_HOST_DATA_DIR: ${PWD}/data/osm
@@ -95,6 +97,8 @@ services:
       VALHALLA_HEALTH_INTERVAL_SECONDS: ${VALHALLA_HEALTH_INTERVAL_SECONDS:-2}
       OSM_IMPORT_MIN_RETAIN_RATIO: ${OSM_IMPORT_MIN_RETAIN_RATIO:-0.2}
       OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK: ${OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK:-20}
+      VALHALLA_DOCKER_IMAGE: ${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}
+      OSMIUM_DOCKER_IMAGE: ${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -110,9 +114,9 @@ services:
     image: ${POSTGIS_IMAGE:-imresamu/postgis:16-3.4-bullseye}
     restart: unless-stopped
     environment:
-      POSTGRES_DB: road_context
-      POSTGRES_USER: road
-      POSTGRES_PASSWORD: road
+      POSTGRES_DB: ${POSTGRES_DB:-road_context}
+      POSTGRES_USER: ${POSTGRES_USER:-road}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-road}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
@@ -120,7 +124,7 @@ services:
     networks:
       - road-context
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U road -d road_context"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-road} -d ${POSTGRES_DB:-road_context}"]
       interval: 10s
       timeout: 5s
       retries: 10
