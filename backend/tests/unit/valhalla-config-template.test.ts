@@ -6,10 +6,14 @@ describe("Valhalla configuration template", () => {
     const templatePath = path.resolve("docker/valhalla/valhalla.json");
     const config = JSON.parse(await readFile(templatePath, "utf8")) as {
       mjolnir?: Record<string, unknown>;
+      service_limits?: { status?: { allow_verbose?: boolean } };
     };
 
     expect(config.mjolnir?.tile_dir).toBe("/custom_files/valhalla_tiles");
+    expect(config.mjolnir?.admin).toBe("/custom_files/admins.sqlite");
+    expect(config.mjolnir?.timezone).toBe("/custom_files/timezones.sqlite");
     expect(config.mjolnir).not.toHaveProperty("tile_extract");
     expect(config.mjolnir).not.toHaveProperty("traffic_extract");
+    expect(config.service_limits?.status?.allow_verbose).toBe(true);
   });
 });

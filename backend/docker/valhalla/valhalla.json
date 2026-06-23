@@ -234,7 +234,7 @@
       "min_resample": 10.0
     },
     "status": {
-      "allow_verbose": false
+      "allow_verbose": true
     },
     "taxi": {
       "max_distance": 5000000.0,

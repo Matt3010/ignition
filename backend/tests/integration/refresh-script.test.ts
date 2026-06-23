@@ -12,6 +12,7 @@ async function fixture(
     importFails?: boolean;
     invalidStaging?: boolean;
     healthFails?: boolean;
+    metadataFails?: boolean;
     initialTiles?: boolean;
     buildFails?: boolean;
   } = {},
@@ -36,7 +37,13 @@ exit 0
   await writeFile(
     path.join(bin, "curl"),
     `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_CURL_LOG"
 if [[ "${options.healthFails ?? false}" == "true" ]]; then exit 22; fi
+if [[ "${options.metadataFails ?? false}" == "true" ]]; then
+  printf '%s\n' '{"has_tiles":true,"has_admins":false,"has_timezones":true}'
+else
+  printf '%s\n' '{"has_tiles":true,"has_admins":true,"has_timezones":true}'
+fi
 exit 0
 `,
   );
@@ -73,6 +80,7 @@ exit 0
       PATH: `${bin}:${process.env.PATH ?? ""}`,
       FAKE_DOCKER_LOG: path.join(root, "docker.log"),
       FAKE_NPM_LOG: path.join(root, "npm.log"),
+      FAKE_CURL_LOG: path.join(root, "curl.log"),
       VALHALLA_TILE_DIR: current,
       VALHALLA_STAGING_TILE_DIR: path.join(root, "data", "valhalla.next"),
       VALHALLA_PREVIOUS_TILE_DIR: path.join(root, "data", "valhalla.previous"),
@@ -106,7 +114,7 @@ describeOnUnix("OSM refresh script", () => {
     }
   });
 
-  it("waits for Valhalla health before importing alerts", async () => {
+  it("waits for Valhalla health and requests verbose metadata before importing alerts", async () => {
     const test = await fixture();
     try {
       await execFileAsync("bash", [script], { cwd: process.cwd(), env: test.env });
@@ -114,6 +122,8 @@ describeOnUnix("OSM refresh script", () => {
       expect(npmLog.indexOf("run valhalla:build")).toBeLessThan(
         npmLog.indexOf("run import:osm-alerts"),
       );
+      const curlLog = await readFile(test.env.FAKE_CURL_LOG, "utf8");
+      expect(curlLog).toContain("/status?json=%7B%22verbose%22%3Atrue%7D");
     } finally {
       await rm(test.root, { recursive: true, force: true });
     }
@@ -132,6 +142,22 @@ describeOnUnix("OSM refresh script", () => {
       expect(npmLog).not.toContain("run import:osm-alerts");
     } finally {
       await rm(test.root, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back and does not import alerts when Valhalla metadata is incomplete", async () => {
+    const fixtureResult = await fixture({ metadataFails: true });
+    try {
+      await expect(
+        execFileAsync("bash", [script], { cwd: process.cwd(), env: fixtureResult.env }),
+      ).rejects.toThrow();
+      await expect(
+        readFile(path.join(fixtureResult.current, "valhalla_tiles", "old.tile"), "utf8"),
+      ).resolves.toContain("old");
+      const npmLog = await readFile(fixtureResult.env.FAKE_NPM_LOG, "utf8");
+      expect(npmLog).not.toContain("run import:osm-alerts");
+    } finally {
+      await rm(fixtureResult.root, { recursive: true, force: true });
     }
   });
 
@@ -214,5 +240,4 @@ describeOnUnix("OSM refresh script", () => {
       await rm(test.root, { recursive: true, force: true });
     }
   });
-
 });

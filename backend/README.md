@@ -439,3 +439,23 @@ Non impostare questa variabile nel file `.env`: un valore relativo come `./data/
 Se una build Valhalla viene interrotta o fallisce dopo la preparazione dei dati OSM, la directory di staging `data/valhalla.next` rimane presente. Al tentativo successivo il maintenance valida e riutilizza i file `<regione>.osm.pbf` e `<regione>.alerts.osm`, evitando di scaricare e filtrare nuovamente gli stessi dati. Un aggiornamento periodico completato rimuove invece lo staging e il ciclo successivo scarica normalmente gli estratti aggiornati.
 
 Gli eventi principali sono `osm_download_completed`, `osm_download_reused`, `osm_alert_extraction_completed`, `osm_alerts_reused` e `osm_region_prepared`.
+
+### Valhalla support databases and progress
+
+Before graph tile construction, the maintenance build now creates and checkpoints
+`admins.sqlite` and `timezones.sqlite` in the staging directory. The files are
+validated with SQLite `PRAGMA quick_check`, not only by filename or header. If these files
+are introduced into an older resumable staging build, only the downstream
+`build` and `enhance/cleanup` phases are invalidated; the expensive
+`initialize/constructedges` checkpoint is preserved.
+
+While a stage is running, `valhalla_build_progress` is emitted every
+`VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS` seconds (default: `60`) with elapsed
+time, staging size, file count, graph tile count, and manifest tile count when
+available. Stage completion also emits `valhalla_build_warning_summary` so OSM
+data-quality warnings remain visible without being mistaken for fatal failures.
+After activation, the Valhalla `/status` response must report `has_tiles`,
+`has_admins`, and `has_timezones` as true; otherwise the deployment is rolled
+back before alerts are imported.
+
+Valhalla espone i flag `has_tiles`, `has_admins` e `has_timezones` solo nello status verbose. Il template abilita quindi `service_limits.status.allow_verbose` e il maintenance usa `VALHALLA_METADATA_URL` con `verbose=true` prima di importare gli alert.

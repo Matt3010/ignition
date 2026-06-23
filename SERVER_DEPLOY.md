@@ -76,3 +76,5 @@ VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${PWD}/data/valhalla.next
 ```
 
 Non impostare questa variabile nel file `.env`: un valore relativo come `./data/valhalla.next` verrebbe passato a `docker run -v` e interpretato come nome di volume. Avvia i comandi dalla directory che contiene il relativo `docker-compose.yml`; in questo modo il percorso assoluto viene calcolato automaticamente e il deploy resta portabile tra server diversi.
+
+Valhalla espone i flag `has_tiles`, `has_admins` e `has_timezones` solo nello status verbose. Il template abilita quindi `service_limits.status.allow_verbose` e il maintenance usa `VALHALLA_METADATA_URL` con `verbose=true` prima di importare gli alert.

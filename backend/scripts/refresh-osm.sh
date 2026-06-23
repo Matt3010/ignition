@@ -13,6 +13,7 @@ VALHALLA_CONTAINER_NAME="${VALHALLA_CONTAINER_NAME:-road-context-valhalla}"
 OSM_REFRESH_LOCK_TIMEOUT_SECONDS="${OSM_REFRESH_LOCK_TIMEOUT_SECONDS:-3600}"
 OSM_REFRESH_LOCK_STALE_SECONDS="${OSM_REFRESH_LOCK_STALE_SECONDS:-7200}"
 VALHALLA_HEALTH_URL="${VALHALLA_HEALTH_URL:-http://127.0.0.1:8002/status}"
+VALHALLA_METADATA_URL="${VALHALLA_METADATA_URL:-${VALHALLA_HEALTH_URL}?json=%7B%22verbose%22%3Atrue%7D}"
 VALHALLA_HEALTH_TIMEOUT_SECONDS="${VALHALLA_HEALTH_TIMEOUT_SECONDS:-120}"
 VALHALLA_HEALTH_INTERVAL_SECONDS="${VALHALLA_HEALTH_INTERVAL_SECONDS:-2}"
 
@@ -101,6 +102,32 @@ wait_for_valhalla_health() {
   done
 }
 
+verify_valhalla_tile_metadata() {
+  local response
+  response="$(curl -fsS --max-time 5 "$VALHALLA_METADATA_URL")" || {
+    echo "{\"event\":\"valhalla_metadata_request_failed\",\"region\":\"$OSM_REGION_LABEL\",\"url\":\"$(json_escape "$VALHALLA_METADATA_URL")\"}" >&2
+    return 1
+  }
+  if ! printf '%s' "$response" | node -e '
+    let body = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", chunk => { body += chunk; });
+    process.stdin.on("end", () => {
+      try {
+        const status = JSON.parse(body);
+        const valid = status.has_tiles === true && status.has_admins === true && status.has_timezones === true;
+        process.exit(valid ? 0 : 1);
+      } catch {
+        process.exit(1);
+      }
+    });
+  '; then
+    echo "{\"event\":\"valhalla_metadata_invalid\",\"region\":\"$OSM_REGION_LABEL\",\"requires\":[\"has_tiles\",\"has_admins\",\"has_timezones\"]}" >&2
+    return 1
+  fi
+  echo "{\"event\":\"valhalla_metadata_ready\",\"region\":\"$OSM_REGION_LABEL\",\"hasTiles\":true,\"hasAdmins\":true,\"hasTimezones\":true}"
+}
+
 clear_directory() {
   local directory="$1"
   mkdir -p "$directory"
@@ -115,8 +142,19 @@ move_directory_contents() {
     # Be defensive against a stale file/directory with the same name. This can
     # happen after an interrupted activation or rollback and would make mv
     # merge directories or fail when file types differ.
-    rm -rf -- "$target" || return 1
-    mv -T -- "$entry" "$target" || return 1
+    local moved=false attempt
+    for attempt in 1 2 3; do
+      rm -rf -- "$target" || return 1
+      if mv -T -- "$entry" "$target" 2>/dev/null; then
+        moved=true
+        break
+      fi
+      sleep 0.05
+    done
+    if [[ "$moved" != "true" ]]; then
+      echo "Failed to move $entry to $target after 3 attempts" >&2
+      return 1
+    fi
   done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
 }
 
@@ -205,6 +243,12 @@ if ! wait_for_valhalla_health; then
   stop_valhalla || true
   rollback_tiles || true
   echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"valhalla_health\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
+  exit 1
+fi
+if ! verify_valhalla_tile_metadata; then
+  stop_valhalla || true
+  rollback_tiles || true
+  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"valhalla_metadata\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
   exit 1
 fi
 

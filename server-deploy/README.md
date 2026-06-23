@@ -92,3 +92,19 @@ Non impostare questa variabile nel file `.env`: un valore relativo come `./data/
 ### Ripresa dopo un errore di build
 
 La presenza di `data/valhalla.next` identifica un tentativo incompleto. Al riavvio `osm-refresh` riutilizza i PBF e gli estratti alert già validati invece di riscaricarli. Dopo un'attivazione riuscita lo staging viene rimosso, quindi il successivo aggiornamento pianificato scarica dati nuovi.
+
+### Valhalla build metadata and progress
+
+The OSM maintenance container generates `admins.sqlite` and `timezones.sqlite`
+automatically before graph tiles are built. Both files are stored in
+`data/valhalla.next`, checkpointed, validated with SQLite `PRAGMA quick_check`,
+and promoted together with the tiles. Existing parsing progress is preserved; when these databases are first
+introduced, only the downstream tile stages are rebuilt so the metadata is
+actually embedded.
+
+Progress is logged every 60 seconds by default. Override it in `.env` with
+`VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS` using a positive integer value.
+After activation, maintenance verifies that Valhalla reports `has_tiles`,
+`has_admins`, and `has_timezones`; an incomplete tileset is rolled back.
+
+Valhalla espone i flag `has_tiles`, `has_admins` e `has_timezones` solo nello status verbose. Il template abilita quindi `service_limits.status.allow_verbose` e il maintenance usa `VALHALLA_METADATA_URL` con `verbose=true` prima di importare gli alert.
