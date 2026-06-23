@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -21,13 +21,14 @@ describe("GHCR publication gate", () => {
     expect(ci).toContain("Run live Valhalla tests");
   });
 
-  it("keeps the standalone real-integration workflow manual or scheduled only", async () => {
-    const integration = await readWorkflow("integration.yml");
-    const triggerBlock = integration.split(/\npermissions:\n/, 1)[0];
+  it("keeps all automated checks in the single CI workflow", async () => {
+    const workflowsDir = path.join(repositoryRoot, ".github", "workflows");
 
-    expect(triggerBlock).toContain("workflow_dispatch:");
-    expect(triggerBlock).toContain("schedule:");
-    expect(triggerBlock).not.toContain("pull_request:");
-    expect(triggerBlock).not.toContain("push:");
+    await expect(access(path.join(workflowsDir, "integration.yml"))).rejects.toThrow();
+
+    const ci = await readWorkflow("ci.yml");
+    expect(ci).toContain("workflow_dispatch:");
+    expect(ci).toContain("push:");
+    expect(ci).toContain("pull_request:");
   });
 });

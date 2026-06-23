@@ -346,10 +346,11 @@ Gli import con disattivazione degli alert mancanti rifiutano dataset vuoti o cal
 
 ## GitHub Actions
 
-Il repository include due workflow in `.github/workflows`:
+Il repository include un solo workflow in `.github/workflows`:
 
 - `ci.yml`: esegue su push, pull request e avvio manuale i controlli statici, i test ordinari, PostgreSQL/PostGIS reale e una build/map-matching Valhalla reale su Monaco. La pubblicazione GHCR dipende da tutti questi job.
-- `integration.yml`: mantiene gli stessi test reali come verifica indipendente pianificata settimanalmente o avviabile manualmente; non pubblica immagini e non viene duplicato automaticamente sui push.
+
+Il precedente `integration.yml` è stato rimosso per evitare duplicazioni: tutti i controlli automatici, inclusi quelli reali, sono concentrati nella CI principale.
 
 I test live restano esclusi dalla suite locale normale e vengono abilitati esplicitamente tramite:
 
