@@ -15,7 +15,7 @@ FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl docker.io osmium-tool sqlite3 \
+  && apt-get install -y --no-install-recommends ca-certificates curl docker.io osmium-tool sqlite3 spatialite-bin unzip \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

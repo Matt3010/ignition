@@ -108,3 +108,11 @@ After activation, maintenance verifies that Valhalla reports `has_tiles`,
 `has_admins`, and `has_timezones`; an incomplete tileset is rolled back.
 
 Valhalla espone i flag `has_tiles`, `has_admins` e `has_timezones` solo nello status verbose. Il template abilita quindi `service_limits.status.allow_verbose` e il maintenance usa `VALHALLA_METADATA_URL` con `verbose=true` prima di importare gli alert.
+
+The timezone support database is generated directly by the maintenance
+container with Spatialite instead of invoking the optional upstream
+`valhalla_build_timezones` shell wrapper. The default source is the official
+`evansiroky/timezone-boundary-builder` release `2026b`. Before extraction,
+Ignition resolves the SHA-256 digest published in the GitHub release metadata
+and verifies the archive. A custom archive URL requires an explicit
+`VALHALLA_TIMEZONE_ARCHIVE_SHA256` value.

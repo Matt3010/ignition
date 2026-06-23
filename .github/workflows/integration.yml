@@ -116,6 +116,11 @@ jobs:
       - name: Install dependencies
         run: bash ../.github/npm-ci.sh
 
+      - name: Install Valhalla timezone build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends spatialite-bin sqlite3 unzip
+
       - name: Pull pinned Valhalla image
         run: docker pull "${VALHALLA_DOCKER_IMAGE}"
 

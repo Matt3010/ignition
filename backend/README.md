@@ -459,3 +459,24 @@ After activation, the Valhalla `/status` response must report `has_tiles`,
 back before alerts are imported.
 
 Valhalla espone i flag `has_tiles`, `has_admins` e `has_timezones` solo nello status verbose. Il template abilita quindi `service_limits.status.allow_verbose` e il maintenance usa `VALHALLA_METADATA_URL` con `verbose=true` prima di importare gli alert.
+
+### Timezone database build dependencies
+
+`valhalla_build_timezones` from the upstream Valhalla runtime image is not used
+because that wrapper expects build-time utilities such as `pkg-config` that are
+not guaranteed to be present in runtime images. Ignition downloads the pinned
+timezone-boundary-builder archive and creates `timezones.sqlite` directly with
+`spatialite_tool` and `spatialite`. The runtime image contains the required
+packages, while CI installs `spatialite-bin`, `sqlite3`, and `unzip` explicitly.
+The default source is the official `evansiroky/timezone-boundary-builder`
+release `2026b`. Ignition resolves the SHA-256 digest published by GitHub for
+`timezones-with-oceans.shapefile.zip`, verifies the downloaded archive, and only
+then imports it. The release can be pinned differently with
+`VALHALLA_TIMEZONE_RELEASE`. A custom `VALHALLA_TIMEZONE_ARCHIVE_URL` is accepted
+only when `VALHALLA_TIMEZONE_ARCHIVE_SHA256` is also provided.
+
+The selected release, URL, and digest are persisted in
+`.build-state/timezones.source`. Changing any of them regenerates only the
+timezone database and invalidates the downstream `build` and
+`enhance/cleanup` stages, preserving the expensive parsing and
+`constructedges` checkpoint.
