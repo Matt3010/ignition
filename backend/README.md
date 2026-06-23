@@ -348,8 +348,8 @@ Gli import con disattivazione degli alert mancanti rifiutano dataset vuoti o cal
 
 Il repository include due workflow in `.github/workflows`:
 
-- `ci.yml`: esegue su push, pull request e avvio manuale installazione riproducibile, lint, build TypeScript, test, audit delle dipendenze, controllo sintattico Bash e parsing dei sorgenti Swift.
-- `integration.yml`: avvia PostgreSQL/PostGIS reale, applica le migration ed esegue test spaziali reali. Su `main`/`master`, pianificazione settimanale o avvio manuale può inoltre scaricare l'estratto OSM di Monaco, costruire tile Valhalla e verificare un map matching reale.
+- `ci.yml`: esegue su push, pull request e avvio manuale i controlli statici, i test ordinari, PostgreSQL/PostGIS reale e una build/map-matching Valhalla reale su Monaco. La pubblicazione GHCR dipende da tutti questi job.
+- `integration.yml`: mantiene gli stessi test reali come verifica indipendente pianificata settimanalmente o avviabile manualmente; non pubblica immagini e non viene duplicato automaticamente sui push.
 
 I test live restano esclusi dalla suite locale normale e vengono abilitati esplicitamente tramite:
 
@@ -361,7 +361,7 @@ RUN_VALHALLA_INTEGRATION=1 VALHALLA_BASE_URL=http://127.0.0.1:8002 \
   npm run test:integration:valhalla
 ```
 
-Il job Valhalla è separato perché scarica dati OSM e costruisce tile reali, quindi è più lento della CI ordinaria.
+Il job Valhalla scarica dati OSM e costruisce tile reali, quindi rende la CI più lenta ma impedisce di pubblicare un'immagine non verificata end-to-end.
 
 ## Multiple OSM regions
 
@@ -383,7 +383,7 @@ On the first bootstrap and every scheduled refresh the service:
 
 ## Immagine Docker pubblicata da GitHub Actions
 
-Dopo che i job `Backend checks` e `Swift syntax` sono passati, il workflow CI pubblica automaticamente un'immagine multi-architettura su GitHub Container Registry:
+Solo dopo che `Backend checks`, `Swift syntax`, `PostgreSQL/PostGIS integration` e `Valhalla real map matching` sono passati, il workflow CI pubblica automaticamente un'immagine multi-architettura su GitHub Container Registry:
 
 ```text
 ghcr.io/<owner>/<repository>:latest
