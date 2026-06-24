@@ -9,9 +9,8 @@ OSM_REUSE_EXISTING_DOWNLOADS="${OSM_REUSE_EXISTING_DOWNLOADS:-false}"
 OSM_DOWNLOAD_RETRIES="${OSM_DOWNLOAD_RETRIES:-2}"
 OSM_DOWNLOAD_RETRY_DELAY_SECONDS="${OSM_DOWNLOAD_RETRY_DELAY_SECONDS:-5}"
 OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS="${OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-15}"
-OSM_DOWNLOAD_MAX_TIME_SECONDS="${OSM_DOWNLOAD_MAX_TIME_SECONDS:-90}"
-OSM_DOWNLOAD_SPEED_TIME_SECONDS="${OSM_DOWNLOAD_SPEED_TIME_SECONDS:-30}"
-OSM_DOWNLOAD_SPEED_LIMIT_BYTES="${OSM_DOWNLOAD_SPEED_LIMIT_BYTES:-1024}"
+OSM_DOWNLOAD_SPEED_TIME_SECONDS="${OSM_DOWNLOAD_SPEED_TIME_SECONDS:-120}"
+OSM_DOWNLOAD_SPEED_LIMIT_BYTES="${OSM_DOWNLOAD_SPEED_LIMIT_BYTES:-32768}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
@@ -114,13 +113,16 @@ for region in "${regions[@]}"; do
   else
     download_succeeded=false
     selected_url=""
-    rm -f "$tmp_target"
 
+    # Keep the partial file across attempts and process restarts. curl resumes
+    # from its current size; low-speed detection aborts genuinely stalled
+    # transfers without imposing a fixed wall-clock deadline on multi-GB files.
     for url in "${urls[@]}"; do
-      echo "Downloading OSM extract for $region from $url"
-      rm -f "$tmp_target"
+      partial_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
+      echo "{\"event\":\"osm_download_started\",\"region\":\"$region\",\"source\":\"$url\",\"resumeBytes\":$partial_bytes}"
 
-      if curl \
+      curl_exit=0
+      curl \
         --fail \
         --location \
         --show-error \
@@ -129,12 +131,36 @@ for region in "${regions[@]}"; do
         --retry-delay "$OSM_DOWNLOAD_RETRY_DELAY_SECONDS" \
         --retry-all-errors \
         --connect-timeout "$OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS" \
-        --max-time "$OSM_DOWNLOAD_MAX_TIME_SECONDS" \
         --speed-time "$OSM_DOWNLOAD_SPEED_TIME_SECONDS" \
         --speed-limit "$OSM_DOWNLOAD_SPEED_LIMIT_BYTES" \
-        --user-agent "ignition-ci-osm-downloader/1.0" \
+        --continue-at - \
+        --user-agent "ignition-osm-downloader/1.0" \
         --output "$tmp_target" \
-        "$url"; then
+        "$url" || curl_exit=$?
+
+      # Exit 33 means the origin refused the requested byte range. Restart only
+      # in that specific case; transient failures keep the partial download.
+      if (( curl_exit == 33 )) && [[ -s "$tmp_target" ]]; then
+        echo "{\"event\":\"osm_download_resume_unsupported\",\"region\":\"$region\",\"source\":\"$url\"}" >&2
+        rm -f "$tmp_target"
+        curl_exit=0
+        curl \
+          --fail \
+          --location \
+          --show-error \
+          --silent \
+          --retry "$OSM_DOWNLOAD_RETRIES" \
+          --retry-delay "$OSM_DOWNLOAD_RETRY_DELAY_SECONDS" \
+          --retry-all-errors \
+          --connect-timeout "$OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS" \
+          --speed-time "$OSM_DOWNLOAD_SPEED_TIME_SECONDS" \
+          --speed-limit "$OSM_DOWNLOAD_SPEED_LIMIT_BYTES" \
+          --user-agent "ignition-osm-downloader/1.0" \
+          --output "$tmp_target" \
+          "$url" || curl_exit=$?
+      fi
+
+      if (( curl_exit == 0 )); then
         downloaded_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
         if (( downloaded_bytes >= OSM_DOWNLOAD_MIN_BYTES )) && \
           validate_osm_file "$tmp_target"; then
@@ -143,14 +169,17 @@ for region in "${regions[@]}"; do
           break
         fi
         echo "Downloaded file from $url failed size or OSM validation (${downloaded_bytes} bytes)" >&2
+        # A completed but invalid payload cannot be safely resumed.
+        rm -f "$tmp_target"
       else
-        echo "Download source failed for $region: $url" >&2
+        retained_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
+        echo "{\"event\":\"osm_download_interrupted\",\"region\":\"$region\",\"source\":\"$url\",\"curlExit\":$curl_exit,\"retainedBytes\":$retained_bytes}" >&2
       fi
     done
 
     if [[ "$download_succeeded" != "true" ]]; then
-      rm -f "$tmp_target"
-      echo "All OSM download sources failed for region: $region" >&2
+      retained_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
+      echo "All OSM download sources failed for region: $region; retained partial download: ${retained_bytes} bytes" >&2
       exit 69
     fi
 

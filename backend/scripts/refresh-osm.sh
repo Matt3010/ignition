@@ -21,6 +21,21 @@ VALHALLA_DOCKER_IMAGE="${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 json_escape() { node -e "process.stdout.write(JSON.stringify(process.argv[1]).slice(1,-1))" "$1"; }
 
+trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
+
+prepared_osm_available() {
+  local raw region target
+  IFS=',' read -r -a raw_regions <<< "$OSM_REGIONS"
+  for raw in "${raw_regions[@]}"; do
+    region="$(trim "$raw")"
+    [[ -n "$region" ]] || continue
+    target="$OSM_DATA_DIR/$region.osm.pbf"
+    [[ -f "$target" ]] || return 1
+    osmium fileinfo "$target" >/dev/null 2>&1 || return 1
+  done
+  return 0
+}
+
 VALHALLA_TILE_DIR="$(absolute_path "$VALHALLA_TILE_DIR")"
 VALHALLA_STAGING_TILE_DIR="$(absolute_path "$VALHALLA_STAGING_TILE_DIR")"
 VALHALLA_PREVIOUS_TILE_DIR="$(absolute_path "$VALHALLA_PREVIOUS_TILE_DIR")"
@@ -245,7 +260,12 @@ require_container_control
 # still fetch fresh extracts.
 resume_existing_osm=false
 if [[ -d "$VALHALLA_STAGING_TILE_DIR" ]]; then
-  resume_existing_osm=true
+  echo "{\"event\":\"osm_refresh_staging_detected\",\"region\":\"$OSM_REGION_LABEL\"}"
+  if prepared_osm_available; then
+    resume_existing_osm=true
+  else
+    echo "{\"event\":\"osm_refresh_staging_without_valid_osm\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
+  fi
 fi
 mkdir -p "$VALHALLA_STAGING_TILE_DIR"
 

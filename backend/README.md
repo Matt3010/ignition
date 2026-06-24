@@ -487,3 +487,10 @@ The selected release, URL, and digest are persisted in
 timezone database and invalidates the downstream `build` and
 `enhance/cleanup` stages, preserving the expensive parsing and
 `constructedges` checkpoint.
+
+
+### Download OSM resiliente
+
+Il download degli estratti `.osm.pbf` non usa un timeout complessivo fisso: per file grandi resta attivo finché il trasferimento continua a una velocità utile. Se la connessione si interrompe, il file parziale `*.download.osm.pbf` viene conservato e il tentativo successivo riparte dal byte già scaricato tramite HTTP Range. Solo un payload completato ma non valido viene eliminato.
+
+Un refresh fallito viene ritentato automaticamente dopo 5 minuti, con backoff progressivo fino a 1 ora; dopo un refresh riuscito torna l'intervallo pianificato normale. Non sono necessarie variabili `.env` aggiuntive.
