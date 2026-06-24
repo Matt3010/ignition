@@ -69,6 +69,10 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
   async match(input: Parameters<RoadContextProvider["match"]>[0]): Promise<RoadMatch> {
     try {
       const points = input.trace.map(toValhallaPoint);
+      if (points.length < 2) {
+        return unmatched(input.sample, 0.1, "noMatch");
+      }
+
       const data = valhallaTraceAttributesSchema.parse(await this.client.traceAttributes(points));
       const matched = data.matched_points.at(-1);
       if (!matched || matched.type === "unmatched") {

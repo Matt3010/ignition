@@ -146,21 +146,32 @@ describeLive("production dependency graph end to end", () => {
     );
 
     try {
-      const response = await app.inject({
-        method: "POST",
-        url: "/api/v1/road-context",
-        payload: {
-          latitude: 0,
-          longitude: 0,
-          speedKmh: 20,
-          course: 0,
-          horizontalAccuracyMeters: 8,
-          timestamp: new Date().toISOString(),
-          sessionId: randomUUID(),
-        },
-      });
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ matched: false, matchStatus: "noMatch" });
+      const sessionId = randomUUID();
+      const startedAt = Date.now();
+      const outsideTileTrace = [
+        { latitude: 0, longitude: 0 },
+        { latitude: 0.0001, longitude: 0.0001 },
+      ];
+
+      let response = null as Awaited<ReturnType<typeof app.inject>> | null;
+      for (const [index, point] of outsideTileTrace.entries()) {
+        response = await app.inject({
+          method: "POST",
+          url: "/api/v1/road-context",
+          payload: {
+            ...point,
+            speedKmh: 20,
+            course: null,
+            horizontalAccuracyMeters: 12,
+            timestamp: new Date(startedAt + index * 2_000).toISOString(),
+            sessionId,
+          },
+        });
+        expect(response.statusCode).toBe(200);
+      }
+
+      expect(response).not.toBeNull();
+      expect(response!.json()).toMatchObject({ matched: false, matchStatus: "noMatch" });
     } finally {
       await app.close();
     }
