@@ -41,6 +41,10 @@ final class LocationRecorder: NSObject, ObservableObject {
     @Published private(set) var currentSessionFileURL: URL?
     @Published private(set) var lastAccuracyText = "n/d"
     @Published private(set) var currentCoordinate: CLLocationCoordinate2D?
+    @Published private(set) var currentSpeedKmh: Double = 0
+    @Published private(set) var currentCourseDegrees: Double?
+    @Published private(set) var currentHorizontalAccuracyMeters: Double?
+    @Published private(set) var currentRoadContext: RoadContextResponse?
     @Published private(set) var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published private(set) var routePoints: [RecordedRoutePoint] = []
     @Published private(set) var speedViolationPoints: [SpeedViolationPoint] = []
@@ -100,6 +104,10 @@ final class LocationRecorder: NSObject, ObservableObject {
         currentSessionEvents = []
         currentSessionFileURL = nil
         currentCoordinate = nil
+        currentSpeedKmh = 0
+        currentCourseDegrees = nil
+        currentHorizontalAccuracyMeters = nil
+        currentRoadContext = nil
         routeCoordinates = []
         routePoints = []
         speedViolationPoints = []
@@ -296,6 +304,9 @@ final class LocationRecorder: NSObject, ObservableObject {
 
     private func updateMapLocation(_ location: CLLocation) {
         currentCoordinate = location.coordinate
+        currentSpeedKmh = max(location.speed, 0) * 3.6
+        currentCourseDegrees = location.course >= 0 ? location.course : nil
+        currentHorizontalAccuracyMeters = location.horizontalAccuracy > 0 ? location.horizontalAccuracy : nil
 
         if let last = routeCoordinates.last {
             let previous = CLLocation(latitude: last.latitude, longitude: last.longitude)
@@ -353,9 +364,14 @@ final class LocationRecorder: NSObject, ObservableObject {
 
     private func updateMapAlerts(from response: RoadContextResponse?) {
         guard let response else { return }
-        for alert in response.alerts {
-            mapAlertsById[alert.id] = alert
-        }
+
+        // The backend response is the authoritative set of nearby alerts for
+        // the current sample. Rebuild the dictionary so alerts that have been
+        // passed or are no longer relevant disappear from the map.
+        mapAlertsById = Dictionary(
+            response.alerts.map { ($0.id, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
         mapAlerts = mapAlertsById.values.sorted { lhs, rhs in
             if lhs.distanceMeters == rhs.distanceMeters {
                 return lhs.id < rhs.id
@@ -437,6 +453,9 @@ final class LocationRecorder: NSObject, ObservableObject {
     private func prepend(_ event: RecorderEvent, sessionId eventSessionId: UUID, backendURL: URL) {
         guard sessionId == eventSessionId, isRecording else { return }
         let hiddenFromTimeline = warmupOnly(event)
+        if let response = event.response {
+            currentRoadContext = response
+        }
         updateMapAlerts(from: event.response)
         updateSpeedTrace(from: event)
         currentSessionEvents.append(event)
