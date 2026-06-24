@@ -6,16 +6,16 @@ OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
 OSM_DOWNLOAD_MIN_BYTES="${OSM_DOWNLOAD_MIN_BYTES:-1048576}"
 OSM_ALERT_EXTRACT_MIN_BYTES="${OSM_ALERT_EXTRACT_MIN_BYTES:-1}"
 OSM_REUSE_EXISTING_DOWNLOADS="${OSM_REUSE_EXISTING_DOWNLOADS:-false}"
-OSM_DOWNLOAD_RETRIES="${OSM_DOWNLOAD_RETRIES:-5}"
+OSM_DOWNLOAD_RETRIES="${OSM_DOWNLOAD_RETRIES:-2}"
 OSM_DOWNLOAD_RETRY_DELAY_SECONDS="${OSM_DOWNLOAD_RETRY_DELAY_SECONDS:-5}"
-OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS="${OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-20}"
-OSM_DOWNLOAD_MAX_TIME_SECONDS="${OSM_DOWNLOAD_MAX_TIME_SECONDS:-180}"
+OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS="${OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-15}"
+OSM_DOWNLOAD_MAX_TIME_SECONDS="${OSM_DOWNLOAD_MAX_TIME_SECONDS:-90}"
 OSM_DOWNLOAD_SPEED_TIME_SECONDS="${OSM_DOWNLOAD_SPEED_TIME_SECONDS:-30}"
 OSM_DOWNLOAD_SPEED_LIMIT_BYTES="${OSM_DOWNLOAD_SPEED_LIMIT_BYTES:-1024}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
-preset_url() {
+preset_urls() {
   case "$1" in
     italy) printf '%s\n' "https://download.geofabrik.de/europe/italy-latest.osm.pbf" ;;
     france) printf '%s\n' "https://download.geofabrik.de/europe/france-latest.osm.pbf" ;;
@@ -25,7 +25,11 @@ preset_url() {
     austria) printf '%s\n' "https://download.geofabrik.de/europe/austria-latest.osm.pbf" ;;
     slovenia) printf '%s\n' "https://download.geofabrik.de/europe/slovenia-latest.osm.pbf" ;;
     croatia) printf '%s\n' "https://download.geofabrik.de/europe/croatia-latest.osm.pbf" ;;
-    monaco) printf '%s\n' "https://download.geofabrik.de/europe/monaco-latest.osm.pbf" ;;
+    monaco)
+      printf '%s\n' \
+        "https://download.openstreetmap.fr/extracts/europe/monaco-latest.osm.pbf" \
+        "https://download.geofabrik.de/europe/monaco-latest.osm.pbf"
+      ;;
     *) return 1 ;;
   esac
 }
@@ -73,10 +77,11 @@ for lifecycle in disused abandoned removed demolished razed; do
 done
 
 for region in "${regions[@]}"; do
-  if ! url="$(preset_url "$region")"; then
+  if ! mapfile -t urls < <(preset_urls "$region"); then
     echo "Unknown OSM region preset: $region. Supported presets: italy, france, germany, spain, switzerland, austria, slovenia, croatia, monaco." >&2
     exit 64
   fi
+  [[ ${#urls[@]} -gt 0 ]] || { echo "No download URL configured for region: $region" >&2; exit 64; }
   target="$OSM_DATA_DIR/$region.osm.pbf"
   tmp_target="$OSM_DATA_DIR/$region.download.osm.pbf"
   alerts_target="$OSM_DATA_DIR/$region.alerts.osm"
@@ -87,42 +92,50 @@ for region in "${regions[@]}"; do
     target_bytes="$(stat -c %s "$target")"
     echo "{\"event\":\"osm_download_reused\",\"region\":\"$region\",\"bytes\":$target_bytes}"
   else
-    echo "Downloading OSM extract for $region from $url"
-    if [[ -f "$tmp_target" ]]; then
-      partial_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
-      echo "Resuming partial download for $region from $partial_bytes bytes"
-    fi
+    download_succeeded=false
+    selected_url=""
+    rm -f "$tmp_target"
 
-    # Geofabrik latest URLs may redirect. Keep the partial file on network or
-    # process interruption so a later run can continue instead of restarting.
-    curl \
-      --fail \
-      --location \
-      --show-error \
-      --retry "$OSM_DOWNLOAD_RETRIES" \
-      --retry-delay "$OSM_DOWNLOAD_RETRY_DELAY_SECONDS" \
-      --retry-all-errors \
-      --connect-timeout "$OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS" \
-      --max-time "$OSM_DOWNLOAD_MAX_TIME_SECONDS" \
-      --speed-time "$OSM_DOWNLOAD_SPEED_TIME_SECONDS" \
-      --speed-limit "$OSM_DOWNLOAD_SPEED_LIMIT_BYTES" \
-      --continue-at - \
-      --output "$tmp_target" \
-      "$url"
-
-    downloaded_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
-    if (( downloaded_bytes < OSM_DOWNLOAD_MIN_BYTES )); then
-      echo "Downloaded OSM extract for $region is unexpectedly small: ${downloaded_bytes} bytes" >&2
+    for url in "${urls[@]}"; do
+      echo "Downloading OSM extract for $region from $url"
       rm -f "$tmp_target"
-      exit 65
+
+      if curl \
+        --fail \
+        --location \
+        --show-error \
+        --silent \
+        --retry "$OSM_DOWNLOAD_RETRIES" \
+        --retry-delay "$OSM_DOWNLOAD_RETRY_DELAY_SECONDS" \
+        --retry-all-errors \
+        --connect-timeout "$OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS" \
+        --max-time "$OSM_DOWNLOAD_MAX_TIME_SECONDS" \
+        --speed-time "$OSM_DOWNLOAD_SPEED_TIME_SECONDS" \
+        --speed-limit "$OSM_DOWNLOAD_SPEED_LIMIT_BYTES" \
+        --user-agent "ignition-ci-osm-downloader/1.0" \
+        --output "$tmp_target" \
+        "$url"; then
+        downloaded_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
+        if (( downloaded_bytes >= OSM_DOWNLOAD_MIN_BYTES )) && \
+          validate_osm_file "$tmp_target" "/data/$region.download.osm.pbf"; then
+          download_succeeded=true
+          selected_url="$url"
+          break
+        fi
+        echo "Downloaded file from $url failed size or OSM validation (${downloaded_bytes} bytes)" >&2
+      else
+        echo "Download source failed for $region: $url" >&2
+      fi
+    done
+
+    if [[ "$download_succeeded" != "true" ]]; then
+      rm -f "$tmp_target"
+      echo "All OSM download sources failed for region: $region" >&2
+      exit 69
     fi
 
-    if ! validate_osm_file "$tmp_target" "/data/$region.download.osm.pbf"; then
-      echo "Downloaded OSM extract for $region is not a valid OSM file" >&2
-      rm -f "$tmp_target"
-      exit 65
-    fi
-    echo "{\"event\":\"osm_download_completed\",\"region\":\"$region\",\"bytes\":$downloaded_bytes}"
+    downloaded_bytes="$(stat -c %s "$tmp_target")"
+    echo "{\"event\":\"osm_download_completed\",\"region\":\"$region\",\"bytes\":$downloaded_bytes,\"source\":\"$selected_url\"}"
     mv "$tmp_target" "$target"
     echo "{\"event\":\"osm_download_promoted\",\"region\":\"$region\",\"target\":\"$target\"}"
   fi

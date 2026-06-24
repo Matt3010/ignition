@@ -155,6 +155,9 @@ jobs:
       OSM_DATA_DIR: ./data/osm
       OSM_DOWNLOAD_MIN_BYTES: "100000"
       OSM_ALERT_EXTRACT_MIN_BYTES: "1"
+      OSM_DOWNLOAD_RETRIES: "1"
+      OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS: "15"
+      OSM_DOWNLOAD_MAX_TIME_SECONDS: "75"
       VALHALLA_TILE_DIR: ./data/valhalla-ci
     defaults:
       run:
@@ -185,7 +188,9 @@ jobs:
         run: docker pull "${VALHALLA_DOCKER_IMAGE}"
 
       - name: Download and validate Monaco OSM extract
-        run: timeout --signal=TERM --kill-after=30s 5m npm run osm:download
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=30s 6m npm run osm:download 2>&1 | tee osm-download.log
 
       - name: Build Valhalla tiles
         run: timeout --signal=TERM --kill-after=30s 30m npm run valhalla:build
@@ -269,9 +274,24 @@ jobs:
           VALHALLA_METADATA_URL: http://127.0.0.1:8002/status?json=%7B%22verbose%22%3Atrue%7D
         run: timeout --signal=TERM --kill-after=30s 35m npm run test:osm-pipeline
 
-      - name: Upload Valhalla logs on failure
+      - name: Collect Valhalla diagnostics on failure
         if: failure()
-        run: docker logs ignition-ci-valhalla > valhalla-ci.log 2>&1 || true
+        shell: bash
+        run: |
+          {
+            echo "=== Containers ==="
+            docker ps -a || true
+            echo
+            echo "=== Valhalla logs ==="
+            if docker inspect ignition-ci-valhalla >/dev/null 2>&1; then
+              docker logs ignition-ci-valhalla || true
+            else
+              echo "Valhalla container was never created; failure occurred earlier."
+            fi
+            echo
+            echo "=== OSM files ==="
+            find data/osm -maxdepth 2 -type f -printf '%p %s bytes\n' 2>/dev/null | sort || true
+          } > valhalla-ci.log 2>&1
 
       - name: Publish failure logs
         if: failure()
