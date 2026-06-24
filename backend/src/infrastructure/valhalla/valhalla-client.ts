@@ -82,19 +82,13 @@ export class ValhallaClient {
       });
 
       const body = await response.text();
-      if (!response.ok) {
-        throw toValhallaResponseError(response.status, body);
+      const parsedBody = parseValhallaJson(body, response.status);
+
+      if (!response.ok || isValhallaErrorPayload(parsedBody)) {
+        throw toValhallaResponseError(response.status, body, parsedBody);
       }
 
-      try {
-        return JSON.parse(body) as unknown;
-      } catch (error) {
-        throw new ValhallaHttpError(
-          `Valhalla returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-          response.status,
-          null,
-        );
-      }
+      return parsedBody;
     } finally {
       clearTimeout(timer);
     }
@@ -116,8 +110,12 @@ export class ValhallaClient {
   }
 }
 
-function toValhallaResponseError(statusCode: number, body: string): Error {
-  const payload = parseValhallaErrorPayload(body);
+function toValhallaResponseError(
+  statusCode: number,
+  body: string,
+  parsedPayload?: unknown,
+): Error {
+  const payload = isRecord(parsedPayload) ? (parsedPayload as ValhallaErrorPayload) : parseValhallaErrorPayload(body);
   const errorCode = parseValhallaErrorCode(payload?.error_code);
   const detail = typeof payload?.error === "string" ? payload.error : body.trim();
   const message = detail
@@ -153,6 +151,33 @@ function parseValhallaErrorCode(value: unknown): number | null {
   }
 
   return null;
+}
+
+
+function parseValhallaJson(body: string, statusCode: number): unknown {
+  try {
+    return JSON.parse(body) as unknown;
+  } catch (error) {
+    throw new ValhallaHttpError(
+      `Valhalla returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      statusCode,
+      null,
+    );
+  }
+}
+
+function isValhallaErrorPayload(value: unknown): value is ValhallaErrorPayload {
+  if (!isRecord(value)) return false;
+
+  return (
+    value.error_code !== undefined ||
+    value.status_code !== undefined ||
+    (typeof value.error === "string" && value.error.trim().length > 0)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function parseValhallaErrorPayload(body: string): ValhallaErrorPayload | null {
