@@ -31,6 +31,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     private var currentSessionArchive: RecorderSessionArchive?
     private var currentSessionEvents: [RecorderEvent] = []
     private var activeSendTask: Task<Void, Never>?
+    private var pendingLocation: CLLocation?
     private var activeRequestToken: UUID?
     private var sessionGeneration = UUID()
     private var archiveRevision = 0
@@ -74,6 +75,7 @@ final class LocationRecorder: NSObject, ObservableObject {
         currentSessionFileURL = nil
         lastSentLocation = nil
         lastSentAt = nil
+        pendingLocation = nil
         isRecording = true
         statusText = "Richiesta GPS"
         currentSessionArchive = RecorderSessionArchive(
@@ -124,6 +126,7 @@ final class LocationRecorder: NSObject, ObservableObject {
         activeSendTask?.cancel()
         activeSendTask = nil
         activeRequestToken = nil
+        pendingLocation = nil
 
         let stoppedSessionId = sessionId
         let stoppedBackendURL = validatedBackendURL
@@ -150,10 +153,10 @@ final class LocationRecorder: NSObject, ObservableObject {
     }
 
     func clearEvents() {
+        // Clear only the visible timeline. Session counters and the persisted
+        // archive must continue to describe the complete recording.
         events = []
-        sentCount = 0
-        errorCount = 0
-        statusText = "Pronto"
+        statusText = isRecording ? "Registrazione attiva" : "Pronto"
     }
 
     func reloadSavedSessions() async {
@@ -194,7 +197,19 @@ final class LocationRecorder: NSObject, ObservableObject {
             return
         }
         guard shouldSend(location) else { return }
-        guard activeSendTask == nil, let backendURL = validatedBackendURL else { return }
+        guard let backendURL = validatedBackendURL else { return }
+
+        if activeSendTask != nil {
+            // Keep only the freshest eligible sample while one request is in flight.
+            pendingLocation = location
+            return
+        }
+
+        startSend(location: location, backendURL: backendURL)
+    }
+
+    private func startSend(location: CLLocation, backendURL: URL) {
+        guard isRecording, activeSendTask == nil else { return }
 
         lastSentLocation = location
         lastSentAt = Date()
@@ -224,7 +239,25 @@ final class LocationRecorder: NSObject, ObservableObject {
             guard let self, self.activeRequestToken == requestToken else { return }
             self.activeSendTask = nil
             self.activeRequestToken = nil
+            self.sendPendingLocationIfNeeded(
+                sessionId: requestSessionId,
+                generation: requestGeneration,
+                backendURL: backendURL
+            )
         }
+    }
+
+    private func sendPendingLocationIfNeeded(sessionId requestSessionId: UUID, generation: UUID, backendURL: URL) {
+        guard isCurrentRequest(sessionId: requestSessionId, generation: generation),
+              let location = pendingLocation else { return }
+        pendingLocation = nil
+
+        let age = Date().timeIntervalSince(location.timestamp)
+        guard age <= maximumLocationAge, age >= -maximumLocationFutureSkew,
+              location.horizontalAccuracy > 0, location.horizontalAccuracy <= 50,
+              shouldSend(location) else { return }
+
+        startSend(location: location, backendURL: backendURL)
     }
 
     private func shouldSend(_ location: CLLocation) -> Bool {

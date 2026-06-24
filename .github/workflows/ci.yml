@@ -9,14 +9,39 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/check-package-lock-registry.sh'
+              - '.github/npm-ci.sh'
+            ios:
+              - 'ios/**'
+
   backend:
     name: Backend checks
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -54,27 +79,32 @@ jobs:
       - name: Bash syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
-  swift-syntax:
-    name: Swift syntax
+  ios-build:
+    name: iOS simulator build
+    needs: changes
+    if: needs.changes.outputs.ios == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Parse Swift sources
-        shell: bash
+      - name: Build RoadRecorder for iOS Simulator
         run: |
-          found=0
-          while IFS= read -r -d '' file; do
-            found=1
-            swiftc -parse "$file"
-          done < <(find . -type f -name '*.swift' -print0)
-          if [[ "$found" -eq 0 ]]; then
-            echo "No Swift files found"
-          fi
+          set -o pipefail
+          xcodebuild \
+            -project ios/RoadRecorder/RoadRecorder.xcodeproj \
+            -scheme RoadRecorder \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
 
   postgis:
     name: PostgreSQL/PostGIS integration
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -125,6 +155,8 @@ jobs:
 
   valhalla:
     name: Real Valhalla and full-stack integration
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 75
     services:
@@ -315,12 +347,17 @@ jobs:
 
   publish-image:
     name: Publish application image
+    needs: [changes, backend, postgis, valhalla]
     if: >-
+      always() &&
+      (needs.changes.outputs.backend == 'true' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.backend.result == 'success' &&
+      needs.postgis.result == 'success' &&
+      needs.valhalla.result == 'success' &&
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' ||
        github.ref == 'refs/heads/master' ||
        startsWith(github.ref, 'refs/tags/v'))
-    needs: [backend, swift-syntax, postgis, valhalla]
     runs-on: ubuntu-latest
     permissions:
       contents: read

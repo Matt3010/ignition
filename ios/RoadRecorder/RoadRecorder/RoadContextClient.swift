@@ -355,8 +355,16 @@ final class RoadContextClient {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    init(session: URLSession? = nil) {
+        if let session {
+            self.session = session
+        } else {
+            let configuration = URLSessionConfiguration.default
+            configuration.timeoutIntervalForRequest = 5
+            configuration.timeoutIntervalForResource = 10
+            configuration.waitsForConnectivity = false
+            self.session = URLSession(configuration: configuration)
+        }
     }
 
     func send(sample: RoadContextSample, backendBaseURL: URL) async throws -> RoadContextClientResult {

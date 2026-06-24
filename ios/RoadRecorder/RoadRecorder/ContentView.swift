@@ -180,7 +180,7 @@ private struct EventRow: View {
                     EventDetailLine(icon: "point.3.connected.trianglepath.dotted", text: "tipo: \(response.roadType ?? "n/d"), direzione: \(response.direction)")
                     EventDetailLine(icon: "speedometer", text: limitCheckText(response))
                         .foregroundStyle(limitCheckColor(response))
-                    EventDetailLine(icon: "clock", text: "dati: \(response.dataTimestamp)")
+                    EventDetailLine(icon: "clock", text: "campione GPS: \(response.dataTimestamp)")
 
                     if response.alerts.isEmpty {
                         EventDetailLine(icon: "camera", text: "alert: nessuno")
