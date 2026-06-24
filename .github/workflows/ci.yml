@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main, master, develop]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -18,6 +18,7 @@ jobs:
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
@@ -44,8 +45,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Unit and mocked integration tests
-        run: npm test -- --reporter=default
+      - name: Deterministic tests without simulated services
+        run: timeout --signal=TERM --kill-after=30s 8m npm run test:deterministic -- --reporter=default
 
       - name: Dependency audit
         run: npm audit --audit-level=high
@@ -75,6 +76,7 @@ jobs:
   postgis:
     name: PostgreSQL/PostGIS integration
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgis/postgis:16-3.4
@@ -91,7 +93,7 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgres://road:road@127.0.0.1:5432/road_context
-      RUN_DB_INTEGRATION: '1'
+      RUN_DB_INTEGRATION: "1"
     defaults:
       run:
         working-directory: backend
@@ -119,19 +121,40 @@ jobs:
         run: npm run migrate
 
       - name: Run live PostGIS tests
-        run: npx vitest run tests/live/postgis-live.test.ts --reporter=verbose
+        run: timeout --signal=TERM --kill-after=30s 12m npm run test:postgis -- --reporter=verbose
 
   valhalla:
-    name: Valhalla real map matching
+    name: Real Valhalla and full-stack integration
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: road_context
+          POSTGRES_USER: road
+          POSTGRES_PASSWORD: road
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U road -d road_context"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
-      RUN_VALHALLA_INTEGRATION: '1'
+      RUN_VALHALLA_INTEGRATION: "1"
+      RUN_FULL_STACK_INTEGRATION: "1"
+      RUN_FAILURE_INTEGRATION: "1"
+      RUN_RUNTIME_INTEGRATION: "1"
+      RUN_NETWORK_FAULT_INTEGRATION: "1"
+      DATABASE_URL: postgres://road:road@127.0.0.1:5432/road_context
       VALHALLA_DOCKER_IMAGE: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
       VALHALLA_DOCKER_PLATFORM: linux/amd64
       VALHALLA_BASE_URL: http://127.0.0.1:8002
       OSM_REGIONS: monaco
       OSM_DATA_DIR: ./data/osm
+      OSM_DOWNLOAD_MIN_BYTES: "100000"
+      OSM_ALERT_EXTRACT_MIN_BYTES: "1"
       VALHALLA_TILE_DIR: ./data/valhalla-ci
     defaults:
       run:
@@ -161,19 +184,15 @@ jobs:
       - name: Pull pinned Valhalla image
         run: docker pull "${VALHALLA_DOCKER_IMAGE}"
 
-      - name: Download Monaco OSM extract
-        run: |
-          mkdir -p "${OSM_DATA_DIR}"
-          curl --fail --location --retry 4 --retry-all-errors \
-            --output "${OSM_DATA_DIR}/${OSM_REGIONS}.osm.pbf" \
-            https://download.geofabrik.de/europe/monaco-latest.osm.pbf
+      - name: Download and validate Monaco OSM extract
+        run: timeout --signal=TERM --kill-after=30s 5m npm run osm:download
 
       - name: Build Valhalla tiles
-        run: npm run valhalla:build
+        run: timeout --signal=TERM --kill-after=30s 30m npm run valhalla:build
 
       - name: Start Valhalla
         run: |
-          docker run --detach --rm \
+          docker run --detach \
             --name ignition-ci-valhalla \
             --platform "${VALHALLA_DOCKER_PLATFORM}" \
             --publish 8002:8002 \
@@ -193,8 +212,62 @@ jobs:
           docker logs ignition-ci-valhalla
           exit 1
 
+      - name: Run migrations
+        run: npm run migrate
+
       - name: Run live Valhalla tests
-        run: npx vitest run tests/live/valhalla-live.test.ts --reporter=verbose
+        run: timeout --signal=TERM --kill-after=30s 5m npm run test:valhalla -- --reporter=verbose
+
+      - name: Run real full-stack tests
+        run: timeout --signal=TERM --kill-after=30s 10m npm run test:full-stack -- --reporter=verbose
+
+      - name: Run real infrastructure failure tests
+        run: timeout --signal=TERM --kill-after=30s 5m npm run test:failures -- --reporter=verbose
+
+      - name: Run real server lifecycle tests
+        run: timeout --signal=TERM --kill-after=30s 5m npm run test:runtime -- --reporter=verbose
+
+      - name: Start Toxiproxy
+        run: |
+          docker run --detach \
+            --name ignition-ci-toxiproxy \
+            --network host \
+            shopify/toxiproxy:2.12.0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8474/version >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data '{"name":"valhalla","listen":"127.0.0.1:8004","upstream":"127.0.0.1:8002"}' \
+            http://127.0.0.1:8474/proxies >/dev/null
+
+      - name: Run real Valhalla network fault tests
+        env:
+          VALHALLA_PROXY_BASE_URL: http://127.0.0.1:8004
+          TOXIPROXY_ADMIN_URL: http://127.0.0.1:8474
+        run: timeout --signal=TERM --kill-after=30s 5m npm run test:network-faults -- --reporter=verbose
+
+      - name: Package and verify Valhalla tiles
+        env:
+          OUTPUT_DIR: ./dist-artifacts
+          VERIFY_CONTAINER_NAME: ignition-ci-valhalla-package
+          VERIFY_PORT: "8003"
+        run: timeout --signal=TERM --kill-after=30s 10m npm run test:tile-package
+
+      - name: Run complete OSM refresh pipeline
+        env:
+          OSM_REUSE_EXISTING_DOWNLOADS: "true"
+          VALHALLA_CONTAINER_NAME: ignition-ci-valhalla
+          VALHALLA_STAGING_TILE_DIR: ./data/valhalla-ci.next
+          VALHALLA_PREVIOUS_TILE_DIR: ./data/valhalla-ci.previous
+          VALHALLA_FAILED_TILE_DIR: ./data/valhalla-ci.failed
+          VALHALLA_HEALTH_URL: http://127.0.0.1:8002/status
+          VALHALLA_METADATA_URL: http://127.0.0.1:8002/status?json=%7B%22verbose%22%3Atrue%7D
+        run: timeout --signal=TERM --kill-after=30s 35m npm run test:osm-pipeline
 
       - name: Upload Valhalla logs on failure
         if: failure()
@@ -209,9 +282,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Stop Valhalla
+      - name: Stop integration containers
         if: always()
-        run: docker stop ignition-ci-valhalla || true
+        run: |
+          docker rm -f ignition-ci-toxiproxy ignition-ci-valhalla-package ignition-ci-valhalla || true
 
   publish-image:
     name: Publish application image
@@ -312,4 +386,3 @@ jobs:
             echo
             echo "Use backend/docker-compose.registry.yml for a source-free deployment."
           } >> "$GITHUB_STEP_SUMMARY"
-

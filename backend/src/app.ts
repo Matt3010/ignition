@@ -9,15 +9,13 @@ import { randomUUID } from "node:crypto";
 import { loadConfig, type AppConfig } from "./config/env.js";
 import { APP_VERSION } from "./config/app-version.js";
 import type { AlertRepository } from "./application/ports/alert-repository.js";
+import type { RoadContextProvider } from "./application/ports/road-context-provider.js";
 import { GetRoadContextUseCase } from "./application/use-cases/get-road-context.use-case.js";
 import { SessionTraceStore } from "./domain/services/session-trace.js";
-import { InMemoryAlertRepository } from "./infrastructure/alerts/in-memory-alert-repository.js";
 import { createPool } from "./infrastructure/database/postgres.js";
 import { PostgisAlertRepository } from "./infrastructure/repositories/postgis-alert-repository.js";
 import { ValhallaClient } from "./infrastructure/valhalla/valhalla-client.js";
 import { ValhallaRoadContextProvider } from "./infrastructure/valhalla/valhalla-road-context-provider.js";
-import { createMockAlerts } from "./mock/mock-data.js";
-import { MockRoadContextProvider } from "./mock/mock-road-context-provider.js";
 import { registerErrorHandler } from "./http/plugins/error-handler.js";
 import { registerSessionRateLimit } from "./http/plugins/session-rate-limit.js";
 import { registerAppLogRoutes } from "./http/routes/app-log.routes.js";
@@ -90,20 +88,15 @@ export async function buildApp(config = loadConfig()): Promise<FastifyInstance> 
   return app;
 }
 
-function createDependencies(config: AppConfig, logger: Pick<FastifyInstance["log"], "warn">): {
-  provider: MockRoadContextProvider | ValhallaRoadContextProvider;
+function createDependencies(
+  config: AppConfig,
+  logger: Pick<FastifyInstance["log"], "warn">,
+): {
+  provider: RoadContextProvider;
   alertRepository: AlertRepository;
-  databaseEnabled: boolean;
-  pool?: pg.Pool;
+  databaseEnabled: true;
+  pool: pg.Pool;
 } {
-  if (config.ROAD_CONTEXT_PROVIDER === "mock") {
-    return {
-      provider: new MockRoadContextProvider(config.NODE_ENV === "production"),
-      alertRepository: new InMemoryAlertRepository(createMockAlerts()),
-      databaseEnabled: false,
-    };
-  }
-
   const pool = createPool(config);
   return {
     provider: new ValhallaRoadContextProvider(new ValhallaClient(config), logger),

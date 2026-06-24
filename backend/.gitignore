@@ -1,9 +1,0 @@
-node_modules/
-dist/
-coverage/
-.env
-data/
-reports/
-dist-artifacts/
-.prefetch-lock-*/
-*.log

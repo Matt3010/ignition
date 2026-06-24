@@ -6,7 +6,6 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().default("postgres://road:road@localhost:5432/road_context"),
   VALHALLA_BASE_URL: z.string().url().default("http://localhost:8002"),
-  ROAD_CONTEXT_PROVIDER: z.enum(["valhalla", "mock"]).default("valhalla"),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   VALHALLA_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
   MAX_GPS_ACCURACY_METERS: z.coerce.number().positive().default(50),
@@ -40,9 +39,6 @@ export type AppConfig = z.infer<typeof envSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const config = envSchema.parse(env);
-  if (config.NODE_ENV === "production" && config.ROAD_CONTEXT_PROVIDER === "mock") {
-    throw new Error("ROAD_CONTEXT_PROVIDER=mock is not allowed in production");
-  }
   if (config.ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES < config.ALERT_BEHIND_MIN_ANGLE_DEGREES) {
     throw new Error("ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES must be greater than or equal to ALERT_BEHIND_MIN_ANGLE_DEGREES");
   }

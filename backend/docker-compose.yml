@@ -21,7 +21,6 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgres://road:road@postgres:5432/road_context
       VALHALLA_BASE_URL: http://valhalla:8002
-      ROAD_CONTEXT_PROVIDER: valhalla
       REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-5000}
       VALHALLA_TIMEOUT_MS: ${VALHALLA_TIMEOUT_MS:-2500}
       MAX_GPS_ACCURACY_METERS: ${MAX_GPS_ACCURACY_METERS:-50}

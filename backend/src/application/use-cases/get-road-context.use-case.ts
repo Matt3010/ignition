@@ -16,11 +16,11 @@ export class GetRoadContextUseCase {
     private readonly config: AppConfig,
   ) {}
 
-  execute(sample: GpsSample, scenario?: string | null): Promise<RoadContextResponse> {
-    return this.enqueue(sample.sessionId, () => this.executeSerial(sample, scenario));
+  execute(sample: GpsSample): Promise<RoadContextResponse> {
+    return this.enqueue(sample.sessionId, () => this.executeSerial(sample));
   }
 
-  private async executeSerial(sample: GpsSample, scenario?: string | null): Promise<RoadContextResponse> {
+  private async executeSerial(sample: GpsSample): Promise<RoadContextResponse> {
     const trace = this.traceStore.add(sample);
 
     try {
@@ -28,7 +28,7 @@ export class GetRoadContextUseCase {
         ? { latitude: trace[trace.length - 2].latitude, longitude: trace[trace.length - 2].longitude }
         : null;
       const previousState = this.traceStore.getState(sample.sessionId);
-      const match = await this.provider.match({ sample, trace, previousState, scenario });
+      const match = await this.provider.match({ sample, trace, previousState });
 
       const nearby = await this.alertRepository.findNearby({
         latitude: sample.latitude,

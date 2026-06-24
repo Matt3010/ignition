@@ -33,12 +33,6 @@ export class RoadContextController {
       ]);
     }
 
-    const scenarioHeader = request.headers["x-road-context-scenario"];
-    const scenario = Array.isArray(scenarioHeader) ? scenarioHeader[0] : scenarioHeader;
-    if (scenario && request.server.config.NODE_ENV === "production") {
-      throw new ApplicationError("INVALID_REQUEST", "Scenario debug non consentito in produzione", 400);
-    }
-
     request.log.info(
       {
         sessionHash: hashSessionId(payload.sessionId),
@@ -47,13 +41,10 @@ export class RoadContextController {
       "road context request",
     );
 
-    const response = await this.useCase.execute(
-      {
-        ...payload,
-        course: normalizeCourse(payload.course),
-      },
-      scenario,
-    );
+    const response = await this.useCase.execute({
+      ...payload,
+      course: normalizeCourse(payload.course),
+    });
     reply.send(response);
   };
 }

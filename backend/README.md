@@ -9,7 +9,6 @@ Backend TypeScript per un assistente stradale audio per motociclisti. Riceve cam
 - `src/domain`: modelli, geodesia, parsing maxspeed, confidence, cache TTL, trace sessione in memoria.
 - `src/infrastructure/valhalla`: client e provider map matching Valhalla.
 - `src/infrastructure/repositories`: repository PostGIS e log import.
-- `src/mock`: provider solo per test isolati; vietato in produzione.
 - `migrations`: schema PostgreSQL/PostGIS.
 - `scripts`: migrazioni, import alert OSM, download OSM, build tile Valhalla.
 
@@ -57,7 +56,6 @@ Esempio API:
 ```bash
 curl -X POST http://127.0.0.1:3000/api/v1/road-context \
   -H 'content-type: application/json' \
-  -H 'x-road-context-scenario: limit70' \
   -d '{
     "latitude": 45.0,
     "longitude": 11.0,
@@ -356,13 +354,13 @@ I test live restano esclusi dalla suite locale normale e vengono abilitati espli
 
 ```bash
 RUN_DB_INTEGRATION=1 DATABASE_URL=postgres://road:road@127.0.0.1:5432/road_context \
-  npm run test:integration:postgis
+  npm run test:postgis
 
 RUN_VALHALLA_INTEGRATION=1 VALHALLA_BASE_URL=http://127.0.0.1:8002 \
-  npm run test:integration:valhalla
+  npm run test:valhalla
 ```
 
-Il job Valhalla scarica dati OSM e costruisce tile reali, quindi rende la CI più lenta ma impedisce di pubblicare un'immagine non verificata end-to-end.
+Il job Valhalla scarica e valida dati OSM reali, costruisce e impacchetta tile reali, avvia Valhalla, esegue i test full-stack, i guasti infrastrutturali e di rete, quindi prova un refresh completo prima di consentire la pubblicazione GHCR.
 
 ## Multiple OSM regions
 

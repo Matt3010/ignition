@@ -5,7 +5,6 @@ export interface RoadContextProvider {
     sample: GpsSample;
     trace: GpsSample[];
     previousState: SessionRoadState | null;
-    scenario?: string | null;
   }): Promise<RoadMatch>;
 
   health(): Promise<"up" | "down">;

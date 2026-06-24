@@ -7,7 +7,6 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     HOST: "127.0.0.1",
     DATABASE_URL: "postgres://road:road@localhost:5432/road_context",
     VALHALLA_BASE_URL: "http://127.0.0.1:8002",
-    ROAD_CONTEXT_PROVIDER: "mock",
     REQUEST_TIMEOUT_MS: 5000,
     VALHALLA_TIMEOUT_MS: 100,
     MAX_GPS_ACCURACY_METERS: 100,

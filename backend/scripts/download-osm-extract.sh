@@ -4,6 +4,7 @@ set -euo pipefail
 OSM_REGIONS="${OSM_REGIONS:-italy}"
 OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
 OSM_DOWNLOAD_MIN_BYTES="${OSM_DOWNLOAD_MIN_BYTES:-1048576}"
+OSM_ALERT_EXTRACT_MIN_BYTES="${OSM_ALERT_EXTRACT_MIN_BYTES:-1}"
 OSM_REUSE_EXISTING_DOWNLOADS="${OSM_REUSE_EXISTING_DOWNLOADS:-false}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
@@ -18,6 +19,7 @@ preset_url() {
     austria) printf '%s\n' "https://download.geofabrik.de/europe/austria-latest.osm.pbf" ;;
     slovenia) printf '%s\n' "https://download.geofabrik.de/europe/slovenia-latest.osm.pbf" ;;
     croatia) printf '%s\n' "https://download.geofabrik.de/europe/croatia-latest.osm.pbf" ;;
+    monaco) printf '%s\n' "https://download.geofabrik.de/europe/monaco-latest.osm.pbf" ;;
     *) return 1 ;;
   esac
 }
@@ -26,11 +28,11 @@ OSM_DATA_DIR_ABS="$(absolute_path "$OSM_DATA_DIR")"
 mkdir -p "$OSM_DATA_DIR"
 
 validate_osm_file() {
-  local host_file="$1" container_file="$2"
+  local host_file="$1" container_file="$2" minimum_bytes="${3:-$OSM_DOWNLOAD_MIN_BYTES}"
   [[ -f "$host_file" ]] || return 1
   local bytes
   bytes="$(stat -c %s "$host_file" 2>/dev/null || printf '0')"
-  (( bytes >= OSM_DOWNLOAD_MIN_BYTES )) || return 1
+  (( bytes >= minimum_bytes )) || return 1
   if command -v osmium >/dev/null 2>&1; then
     osmium fileinfo "$host_file" >/dev/null 2>&1
   else
@@ -66,7 +68,7 @@ done
 
 for region in "${regions[@]}"; do
   if ! url="$(preset_url "$region")"; then
-    echo "Unknown OSM region preset: $region. Supported presets: italy, france, germany, spain, switzerland, austria, slovenia, croatia." >&2
+    echo "Unknown OSM region preset: $region. Supported presets: italy, france, germany, spain, switzerland, austria, slovenia, croatia, monaco." >&2
     exit 64
   fi
   target="$OSM_DATA_DIR/$region.osm.pbf"
@@ -116,7 +118,7 @@ for region in "${regions[@]}"; do
 
   reuse_alerts=false
   if [[ "$OSM_REUSE_EXISTING_DOWNLOADS" == "true" && -f "$alerts_target" && "$alerts_target" -nt "$target" ]] && \
-    validate_osm_file "$alerts_target" "/data/$region.alerts.osm"; then
+    validate_osm_file "$alerts_target" "/data/$region.alerts.osm" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
     reuse_alerts=true
   fi
 
@@ -131,7 +133,7 @@ for region in "${regions[@]}"; do
       docker run --rm -v "$OSM_DATA_DIR_ABS:/data" "${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}" \
         osmium tags-filter "/data/$region.osm.pbf" "${filters[@]}" --overwrite --output "/data/$region.alerts.osm"
     fi
-    if ! validate_osm_file "$alerts_target" "/data/$region.alerts.osm"; then
+    if ! validate_osm_file "$alerts_target" "/data/$region.alerts.osm" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
       echo "Prepared alert extract for $region is not a valid OSM file" >&2
       rm -f "$alerts_target"
       exit 65
