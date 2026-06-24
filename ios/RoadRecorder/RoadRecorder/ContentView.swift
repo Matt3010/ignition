@@ -1,3 +1,4 @@
+import MapKit
 import SwiftUI
 
 struct ContentView: View {
@@ -47,6 +48,14 @@ struct ContentView: View {
                     StatRow(title: "Campioni inviati", value: "\(recorder.sentCount)")
                     StatRow(title: "Errori", value: "\(recorder.errorCount)")
                     StatRow(title: "Ultima accuratezza", value: recorder.lastAccuracyText)
+                }
+
+                if recorder.isRecording || !recorder.routeCoordinates.isEmpty {
+                    Section("Mappa registrazione") {
+                        RecordingMapView()
+                            .frame(height: 300)
+                            .listRowInsets(EdgeInsets())
+                    }
                 }
 
                 Section("Sessioni salvate") {
@@ -284,5 +293,138 @@ private struct EventAlertLine: View {
 
     private func percent(_ value: Double) -> String {
         "\(Int((value * 100).rounded()))%"
+    }
+}
+
+
+private struct RecordingMapView: View {
+    @EnvironmentObject private var recorder: LocationRecorder
+    @State private var cameraPosition: MapCameraPosition = .automatic
+
+    var body: some View {
+        Map(position: $cameraPosition) {
+            ForEach(routeSegments) { segment in
+                MapPolyline(coordinates: [segment.start.coordinate, segment.end.coordinate])
+                    .stroke(traceColor(for: segment.end), lineWidth: 5)
+            }
+
+            ForEach(recorder.speedViolationPoints) { violation in
+                Annotation(
+                    "Superamento limite",
+                    coordinate: violation.coordinate
+                ) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(6)
+                            .background(.red, in: Circle())
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+
+                        Text("\(Int(violation.speedKmh.rounded()))/\(violation.speedLimitKmh)")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 4)
+                            .background(.regularMaterial, in: Capsule())
+                    }
+                    .accessibilityLabel(
+                        "Limite superato: velocità \(Int(violation.speedKmh.rounded())) chilometri orari, limite \(violation.speedLimitKmh)"
+                    )
+                }
+            }
+
+            ForEach(recorder.mapAlerts, id: \.id) { alert in
+                Annotation(
+                    DriveEventFormatter.alertTypeText(alert.type),
+                    coordinate: CLLocationCoordinate2D(latitude: alert.latitude, longitude: alert.longitude)
+                ) {
+                    Image(systemName: symbolName(for: alert.type))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(7)
+                        .background(.orange, in: Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .shadow(radius: 2)
+                        .accessibilityLabel(DriveEventFormatter.alertTypeText(alert.type))
+                }
+            }
+
+            if let coordinate = recorder.currentCoordinate {
+                Annotation("Posizione corrente", coordinate: coordinate) {
+                    Image(systemName: "location.north.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(.blue, in: Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .shadow(radius: 3)
+                }
+            }
+        }
+        .mapControls {
+            MapCompass()
+            MapScaleView()
+        }
+        .onAppear(perform: centerOnCurrentPosition)
+        .onChange(of: coordinateKey) { _, _ in
+            centerOnCurrentPosition()
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+    }
+
+
+    private struct RouteSegment: Identifiable {
+        let start: RecordedRoutePoint
+        let end: RecordedRoutePoint
+
+        var id: UUID { end.id }
+    }
+
+    private var routeSegments: [RouteSegment] {
+        guard recorder.routePoints.count >= 2 else { return [] }
+        return zip(recorder.routePoints, recorder.routePoints.dropFirst()).map {
+            RouteSegment(start: $0.0, end: $0.1)
+        }
+    }
+
+    private func traceColor(for point: RecordedRoutePoint) -> Color {
+        guard let limit = point.speedLimitKmh, limit > 0 else {
+            return .green
+        }
+
+        let ratio = min(max(point.speedKmh / Double(limit), 0), 1)
+        let hue = (1 - ratio) * 0.33
+        return Color(hue: hue, saturation: 0.9, brightness: 0.9)
+    }
+
+    private var coordinateKey: String {
+        guard let coordinate = recorder.currentCoordinate else { return "none" }
+        return "\(coordinate.latitude),\(coordinate.longitude)"
+    }
+
+    private func centerOnCurrentPosition() {
+        guard let coordinate = recorder.currentCoordinate else { return }
+        cameraPosition = .region(MKCoordinateRegion(
+            center: coordinate,
+            latitudinalMeters: 1_500,
+            longitudinalMeters: 1_500
+        ))
+    }
+
+    private func symbolName(for type: String) -> String {
+        switch type {
+        case "speed_camera", "speedCamera", "fixedSpeedCamera":
+            return "camera.fill"
+        case "road_works", "roadWorks":
+            return "wrench.and.screwdriver.fill"
+        case "accident":
+            return "car.side.rear.and.collision.and.car.side.front"
+        case "police_control", "policeControl":
+            return "shield.fill"
+        default:
+            return "exclamationmark.triangle.fill"
+        }
     }
 }

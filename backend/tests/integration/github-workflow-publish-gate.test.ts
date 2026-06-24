@@ -9,12 +9,16 @@ async function readWorkflow(name: string): Promise<string> {
 }
 
 describe("GHCR publication gate", () => {
-  it("requires static checks and both real integration jobs before publishing", async () => {
+  it("requires backend checks and both real integration jobs before publishing", async () => {
     const ci = await readWorkflow("ci.yml");
     const publishJob = ci.split(/\n\x20{2}publish-image:\n/, 2)[1];
 
     expect(publishJob).toBeDefined();
-    expect(publishJob).toContain("needs: [backend, swift-syntax, postgis, valhalla]");
+    expect(publishJob).toContain("needs: [changes, backend, postgis, valhalla]");
+    expect(publishJob).not.toContain("ios-build");
+    expect(publishJob).toContain("needs.backend.result == 'success'");
+    expect(publishJob).toContain("needs.postgis.result == 'success'");
+    expect(publishJob).toContain("needs.valhalla.result == 'success'");
     expect(ci).toContain("  postgis:\n");
     expect(ci).toContain("  valhalla:\n");
     expect(ci).toContain("Run live PostGIS tests");

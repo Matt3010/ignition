@@ -1,6 +1,26 @@
 import CoreLocation
 import Foundation
 
+struct RecordedRoutePoint: Identifiable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+    let timestamp: String
+    let speedKmh: Double
+    let speedLimitKmh: Int?
+}
+
+struct SpeedViolationPoint: Identifiable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+    let timestamp: String
+    let speedKmh: Double
+    let speedLimitKmh: Int
+
+    var excessKmh: Double {
+        speedKmh - Double(speedLimitKmh)
+    }
+}
+
 @MainActor
 final class LocationRecorder: NSObject, ObservableObject {
     @Published var backendBaseURL = "" {
@@ -20,6 +40,11 @@ final class LocationRecorder: NSObject, ObservableObject {
     @Published private(set) var savedSessions: [SavedSessionSummary] = []
     @Published private(set) var currentSessionFileURL: URL?
     @Published private(set) var lastAccuracyText = "n/d"
+    @Published private(set) var currentCoordinate: CLLocationCoordinate2D?
+    @Published private(set) var routeCoordinates: [CLLocationCoordinate2D] = []
+    @Published private(set) var routePoints: [RecordedRoutePoint] = []
+    @Published private(set) var speedViolationPoints: [SpeedViolationPoint] = []
+    @Published private(set) var mapAlerts: [RoadAlert] = []
 
     private let manager = CLLocationManager()
     private let client = RoadContextClient()
@@ -30,6 +55,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     private var lastSentAt: Date?
     private var currentSessionArchive: RecorderSessionArchive?
     private var currentSessionEvents: [RecorderEvent] = []
+    private var mapAlertsById: [String: RoadAlert] = [:]
     private var activeSendTask: Task<Void, Never>?
     private var pendingLocation: CLLocation?
     private var activeRequestToken: UUID?
@@ -73,6 +99,12 @@ final class LocationRecorder: NSObject, ObservableObject {
         events = []
         currentSessionEvents = []
         currentSessionFileURL = nil
+        currentCoordinate = nil
+        routeCoordinates = []
+        routePoints = []
+        speedViolationPoints = []
+        mapAlerts = []
+        mapAlertsById = [:]
         lastSentLocation = nil
         lastSentAt = nil
         pendingLocation = nil
@@ -196,6 +228,7 @@ final class LocationRecorder: NSObject, ObservableObject {
             statusText = "GPS poco accurato"
             return
         }
+        updateMapLocation(location)
         guard shouldSend(location) else { return }
         guard let backendURL = validatedBackendURL else { return }
 
@@ -258,6 +291,77 @@ final class LocationRecorder: NSObject, ObservableObject {
               shouldSend(location) else { return }
 
         startSend(location: location, backendURL: backendURL)
+    }
+
+
+    private func updateMapLocation(_ location: CLLocation) {
+        currentCoordinate = location.coordinate
+
+        if let last = routeCoordinates.last {
+            let previous = CLLocation(latitude: last.latitude, longitude: last.longitude)
+            guard location.distance(from: previous) >= 3 else { return }
+        }
+
+        routeCoordinates.append(location.coordinate)
+        if routeCoordinates.count > 5_000 {
+            routeCoordinates.removeFirst(routeCoordinates.count - 5_000)
+        }
+    }
+
+    private func updateSpeedTrace(from event: RecorderEvent) {
+        guard event.errorMessage == nil else { return }
+
+        let point = RecordedRoutePoint(
+            coordinate: CLLocationCoordinate2D(
+                latitude: event.sample.latitude,
+                longitude: event.sample.longitude
+            ),
+            timestamp: event.sample.timestamp,
+            speedKmh: event.sample.speedKmh,
+            speedLimitKmh: event.response?.speedLimitKmh
+        )
+
+        if let previous = routePoints.last {
+            let previousLocation = CLLocation(
+                latitude: previous.coordinate.latitude,
+                longitude: previous.coordinate.longitude
+            )
+            let currentLocation = CLLocation(
+                latitude: point.coordinate.latitude,
+                longitude: point.coordinate.longitude
+            )
+            guard currentLocation.distance(from: previousLocation) >= 3 else { return }
+        }
+
+        routePoints.append(point)
+        if routePoints.count > 5_000 {
+            routePoints.removeFirst(routePoints.count - 5_000)
+        }
+
+        if let limit = point.speedLimitKmh, point.speedKmh > Double(limit) {
+            speedViolationPoints.append(SpeedViolationPoint(
+                coordinate: point.coordinate,
+                timestamp: point.timestamp,
+                speedKmh: point.speedKmh,
+                speedLimitKmh: limit
+            ))
+            if speedViolationPoints.count > 1_000 {
+                speedViolationPoints.removeFirst(speedViolationPoints.count - 1_000)
+            }
+        }
+    }
+
+    private func updateMapAlerts(from response: RoadContextResponse?) {
+        guard let response else { return }
+        for alert in response.alerts {
+            mapAlertsById[alert.id] = alert
+        }
+        mapAlerts = mapAlertsById.values.sorted { lhs, rhs in
+            if lhs.distanceMeters == rhs.distanceMeters {
+                return lhs.id < rhs.id
+            }
+            return lhs.distanceMeters < rhs.distanceMeters
+        }
     }
 
     private func shouldSend(_ location: CLLocation) -> Bool {
@@ -333,6 +437,8 @@ final class LocationRecorder: NSObject, ObservableObject {
     private func prepend(_ event: RecorderEvent, sessionId eventSessionId: UUID, backendURL: URL) {
         guard sessionId == eventSessionId, isRecording else { return }
         let hiddenFromTimeline = warmupOnly(event)
+        updateMapAlerts(from: event.response)
+        updateSpeedTrace(from: event)
         currentSessionEvents.append(event)
         if !hiddenFromTimeline {
             events.insert(event, at: 0)
