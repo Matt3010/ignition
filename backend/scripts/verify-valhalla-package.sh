@@ -17,6 +17,9 @@ actual="$(sha256sum "$archive" | awk '{print $1}')"
 [[ "$actual" == "$expected" ]] || { echo "Package SHA256 mismatch" >&2; exit 1; }
 
 extract_dir="$(mktemp -d)"
+# mktemp creates mode 0700. The Valhalla image runs as a non-root user, so the
+# bind-mounted extraction root must be traversable by that user.
+chmod 0755 "$extract_dir"
 cleanup() {
   docker rm -f "$VERIFY_CONTAINER_NAME" >/dev/null 2>&1 || true
   rm -rf "$extract_dir"
@@ -24,6 +27,19 @@ cleanup() {
 trap cleanup EXIT
 
 tar -xzf "$archive" -C "$extract_dir"
+
+# Fail before Docker startup if the produced package is not portable to a
+# non-root runtime. The package script normalizes these modes in the archive.
+[[ -r "$extract_dir/valhalla.json" ]] || { echo "Packaged valhalla.json is not readable" >&2; exit 1; }
+find "$extract_dir" -type d ! -perm -0005 -print -quit | grep -q . && {
+  echo "Package contains a directory that is not traversable/readable by the Valhalla runtime" >&2
+  exit 1
+}
+find "$extract_dir" -type f ! -perm -0004 -print -quit | grep -q . && {
+  echo "Package contains a file that is not readable by the Valhalla runtime" >&2
+  exit 1
+}
+
 [[ -f "$extract_dir/valhalla.json" ]] || { echo "Package misses valhalla.json" >&2; exit 1; }
 [[ -d "$extract_dir/valhalla_tiles" ]] || { echo "Package misses valhalla_tiles" >&2; exit 1; }
 find "$extract_dir/valhalla_tiles" -type f -name '*.gph' -print -quit | grep -q . || {

@@ -31,7 +31,15 @@ if [[ ! -d "$VALHALLA_TILE_DIR/valhalla_tiles" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-tar -C "$VALHALLA_TILE_DIR" -czf "$ARCHIVE" valhalla.json valhalla_tiles
+tar \
+  --owner=0 \
+  --group=0 \
+  --numeric-owner \
+  --mode='u+rwX,go+rX' \
+  -C "$VALHALLA_TILE_DIR" \
+  -czf "$ARCHIVE" \
+  valhalla.json \
+  valhalla_tiles
 
 ARCHIVE="$ARCHIVE" \
   MANIFEST="$MANIFEST" \
