@@ -33,4 +33,15 @@ describe("OSM refresh tile activation portability", () => {
     );
     expect(activation).not.toContain('clear_directory "$VALHALLA_TILE_DIR"');
   });
+  it("escalates cleanup through the Valhalla image for container-owned files", async () => {
+    const script = await readFile(scriptPath, "utf8");
+
+    expect(script).toContain("clear_directory_as_root() {");
+    expect(script).toContain("--user 0:0");
+    expect(script).toContain('-v "$directory:/cleanup"');
+    expect(script).toContain('remove_directory "$VALHALLA_PREVIOUS_TILE_DIR"');
+    expect(script).toContain('remove_directory "$VALHALLA_FAILED_TILE_DIR"');
+    expect(script).not.toContain('rm -rf "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"');
+  });
+
 });

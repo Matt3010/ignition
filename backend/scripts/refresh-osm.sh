@@ -16,6 +16,7 @@ VALHALLA_HEALTH_URL="${VALHALLA_HEALTH_URL:-http://127.0.0.1:8002/status}"
 VALHALLA_METADATA_URL="${VALHALLA_METADATA_URL:-${VALHALLA_HEALTH_URL}?json=%7B%22verbose%22%3Atrue%7D}"
 VALHALLA_HEALTH_TIMEOUT_SECONDS="${VALHALLA_HEALTH_TIMEOUT_SECONDS:-120}"
 VALHALLA_HEALTH_INTERVAL_SECONDS="${VALHALLA_HEALTH_INTERVAL_SECONDS:-2}"
+VALHALLA_DOCKER_IMAGE="${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 json_escape() { node -e "process.stdout.write(JSON.stringify(process.argv[1]).slice(1,-1))" "$1"; }
@@ -135,10 +136,37 @@ verify_valhalla_tile_metadata() {
   fi
 }
 
+clear_directory_as_root() {
+  local directory="$1"
+  mkdir -p "$directory"
+  docker run --rm \
+    --user 0:0 \
+    --entrypoint /bin/sh \
+    -v "$directory:/cleanup" \
+    "$VALHALLA_DOCKER_IMAGE" \
+    -c 'find /cleanup -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' >/dev/null
+}
+
 clear_directory() {
   local directory="$1"
   mkdir -p "$directory"
-  find "$directory" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
+  if find "$directory" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null; then
+    return 0
+  fi
+
+  echo "{\"event\":\"valhalla_directory_cleanup_escalated\",\"region\":\"$OSM_REGION_LABEL\",\"directory\":\"$(json_escape "$directory")\"}" >&2
+  clear_directory_as_root "$directory"
+}
+
+remove_directory() {
+  local directory="$1"
+  [[ -e "$directory" ]] || return 0
+  if rm -rf -- "$directory" 2>/dev/null; then
+    return 0
+  fi
+
+  clear_directory "$directory" || return 1
+  rmdir "$directory" 2>/dev/null || rm -rf -- "$directory"
 }
 
 move_directory_contents() {
@@ -268,5 +296,6 @@ if ! npm run import:osm-alerts; then
   exit 1
 fi
 
-rm -rf "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"
+remove_directory "$VALHALLA_PREVIOUS_TILE_DIR"
+remove_directory "$VALHALLA_FAILED_TILE_DIR"
 echo "{\"event\":\"osm_refresh_finished\",\"region\":\"$OSM_REGION_LABEL\",\"tileDir\":\"$(json_escape "$VALHALLA_TILE_DIR")\",\"restartedValhalla\":true}"
