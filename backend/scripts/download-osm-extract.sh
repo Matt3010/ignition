@@ -34,20 +34,40 @@ preset_urls() {
   esac
 }
 
-OSM_DATA_DIR_ABS="$(absolute_path "$OSM_DATA_DIR")"
 mkdir -p "$OSM_DATA_DIR"
 
+require_command() {
+  local command_name="$1"
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "Required command is not installed: $command_name" >&2
+    return 1
+  fi
+}
+
+for dependency in curl osmium stat; do
+  require_command "$dependency" || exit 69
+done
+
 validate_osm_file() {
-  local host_file="$1" container_file="$2" minimum_bytes="${3:-$OSM_DOWNLOAD_MIN_BYTES}"
-  [[ -f "$host_file" ]] || return 1
+  local host_file="$1" minimum_bytes="${2:-$OSM_DOWNLOAD_MIN_BYTES}"
+
+  if [[ ! -f "$host_file" ]]; then
+    echo "OSM validation failed: file does not exist: $host_file" >&2
+    return 1
+  fi
+
   local bytes
   bytes="$(stat -c %s "$host_file" 2>/dev/null || printf '0')"
-  (( bytes >= minimum_bytes )) || return 1
-  if command -v osmium >/dev/null 2>&1; then
-    osmium fileinfo "$host_file" >/dev/null 2>&1
-  else
-    docker run --rm -v "$OSM_DATA_DIR_ABS:/data" "${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}" \
-      osmium fileinfo "$container_file" >/dev/null 2>&1
+  if (( bytes < minimum_bytes )); then
+    echo "OSM validation failed: $host_file contains $bytes bytes; minimum required is $minimum_bytes" >&2
+    return 1
+  fi
+
+  local validation_output
+  if ! validation_output="$(osmium fileinfo "$host_file" 2>&1)"; then
+    echo "OSM validation failed: osmium rejected $host_file" >&2
+    printf '%s\n' "$validation_output" >&2
+    return 1
   fi
 }
 IFS=',' read -r -a raw_regions <<< "$OSM_REGIONS"
@@ -86,7 +106,7 @@ for region in "${regions[@]}"; do
   tmp_target="$OSM_DATA_DIR/$region.download.osm.pbf"
   alerts_target="$OSM_DATA_DIR/$region.alerts.osm"
   reused_download=false
-  if [[ "$OSM_REUSE_EXISTING_DOWNLOADS" == "true" ]] && validate_osm_file "$target" "/data/$region.osm.pbf"; then
+  if [[ "$OSM_REUSE_EXISTING_DOWNLOADS" == "true" ]] && validate_osm_file "$target"; then
     reused_download=true
     rm -f "$tmp_target"
     target_bytes="$(stat -c %s "$target")"
@@ -117,7 +137,7 @@ for region in "${regions[@]}"; do
         "$url"; then
         downloaded_bytes="$(stat -c %s "$tmp_target" 2>/dev/null || printf '0')"
         if (( downloaded_bytes >= OSM_DOWNLOAD_MIN_BYTES )) && \
-          validate_osm_file "$tmp_target" "/data/$region.download.osm.pbf"; then
+          validate_osm_file "$tmp_target"; then
           download_succeeded=true
           selected_url="$url"
           break
@@ -142,7 +162,7 @@ for region in "${regions[@]}"; do
 
   reuse_alerts=false
   if [[ "$OSM_REUSE_EXISTING_DOWNLOADS" == "true" && -f "$alerts_target" && "$alerts_target" -nt "$target" ]] && \
-    validate_osm_file "$alerts_target" "/data/$region.alerts.osm" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
+    validate_osm_file "$alerts_target" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
     reuse_alerts=true
   fi
 
@@ -151,13 +171,12 @@ for region in "${regions[@]}"; do
     echo "{\"event\":\"osm_alerts_reused\",\"region\":\"$region\",\"bytes\":$alerts_bytes}"
   else
     echo "{\"event\":\"osm_alert_extraction_started\",\"region\":\"$region\"}"
-    if command -v osmium >/dev/null 2>&1; then
-      osmium tags-filter "$target" "${filters[@]}" --overwrite --output "$alerts_target"
-    else
-      docker run --rm -v "$OSM_DATA_DIR_ABS:/data" "${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}" \
-        osmium tags-filter "/data/$region.osm.pbf" "${filters[@]}" --overwrite --output "/data/$region.alerts.osm"
+    if ! osmium tags-filter "$target" "${filters[@]}" --overwrite --output "$alerts_target"; then
+      echo "Failed to extract OSM alerts for region: $region" >&2
+      rm -f "$alerts_target"
+      exit 65
     fi
-    if ! validate_osm_file "$alerts_target" "/data/$region.alerts.osm" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
+    if ! validate_osm_file "$alerts_target" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
       echo "Prepared alert extract for $region is not a valid OSM file" >&2
       rm -f "$alerts_target"
       exit 65

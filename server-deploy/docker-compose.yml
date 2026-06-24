@@ -99,7 +99,6 @@ services:
       OSM_IMPORT_MIN_RETAIN_RATIO: ${OSM_IMPORT_MIN_RETAIN_RATIO:-0.2}
       OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK: ${OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK:-20}
       VALHALLA_DOCKER_IMAGE: ${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}
-      OSMIUM_DOCKER_IMAGE: ${OSMIUM_DOCKER_IMAGE:-ghcr.io/osmcode/osmium-tool:1.18.0}
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
