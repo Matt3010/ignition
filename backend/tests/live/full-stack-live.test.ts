@@ -28,17 +28,9 @@ describeLive("production dependency graph end to end", () => {
   });
 
   it("uses real Valhalla and PostGIS through the production application wiring", async () => {
-    const alertId = randomUUID();
-    const alert: RoadAlert = {
-      id: alertId,
-      type: "fixedSpeedCamera",
-      subtype: "camera",
-      capabilities: ["speed"],
-      primaryCapability: "speed",
+    const baseAlert = {
       latitude: 43.737454,
-      longitude: 7.42492,
-      speedLimitKmh: 50,
-      speedLimitSource: "explicit",
+      speedLimitSource: "unknown",
       direction: "unknown",
       bearing: null,
       roadId: null,
@@ -52,8 +44,55 @@ describeLive("production dependency graph end to end", () => {
       directionBearings: [],
       osmPresenceStatus: "present",
       originalOsmIds: [],
-    };
-    await repository.upsertMany([alert]);
+    } satisfies Omit<
+      RoadAlert,
+      "id" | "type" | "subtype" | "capabilities" | "primaryCapability" | "longitude" | "speedLimitKmh"
+    >;
+
+    const alerts: RoadAlert[] = [
+      {
+        ...baseAlert,
+        id: randomUUID(),
+        type: "fixedSpeedCamera",
+        subtype: "fixed",
+        capabilities: ["maxspeed"],
+        primaryCapability: "maxspeed",
+        longitude: 7.42498,
+        speedLimitKmh: 50,
+        speedLimitSource: "explicit",
+      },
+      {
+        ...baseAlert,
+        id: randomUUID(),
+        type: "redLightCamera",
+        subtype: "red_light",
+        capabilities: ["trafficSignals"],
+        primaryCapability: "trafficSignals",
+        longitude: 7.42508,
+        speedLimitKmh: null,
+      },
+      {
+        ...baseAlert,
+        id: randomUUID(),
+        type: "roadWorks",
+        subtype: "construction",
+        capabilities: ["roadworks"],
+        primaryCapability: "roadworks",
+        longitude: 7.42518,
+        speedLimitKmh: null,
+      },
+      {
+        ...baseAlert,
+        id: randomUUID(),
+        type: "roadHazard",
+        subtype: "hazard",
+        capabilities: ["hazard"],
+        primaryCapability: "hazard",
+        longitude: 7.42528,
+        speedLimitKmh: null,
+      },
+    ];
+    await repository.upsertMany(alerts);
 
     const app = await buildApp(
       testConfig({
@@ -125,9 +164,56 @@ describeLive("production dependency graph end to end", () => {
       expect(finalBody?.matchStatus).toBe("matched");
       expect(Number(finalBody?.confidence)).toBeGreaterThan(0);
       expect(Array.isArray(finalBody?.alerts)).toBe(true);
-      expect((finalBody?.alerts as Array<{ id: string }>).some((item) => item.id === alertId)).toBe(
-        true,
-      );
+
+      const returnedAlerts = finalBody?.alerts as Array<{
+        id: string;
+        type: string;
+        subtype: string | null;
+        capabilities: string[];
+        primaryCapability: string | null;
+        distanceMeters: number;
+        speedLimitKmh: number | null;
+        operationalStatus: string;
+        active: boolean;
+        osmPresenceStatus: string;
+      }>;
+      const expectedIds = new Set(alerts.map((item) => item.id));
+      const testedAlerts = returnedAlerts.filter((item) => expectedIds.has(item.id));
+
+      expect(testedAlerts).toHaveLength(4);
+      expect(testedAlerts.map((item) => item.id)).toEqual(alerts.map((item) => item.id));
+      expect(testedAlerts.map((item) => item.type)).toEqual([
+        "fixedSpeedCamera",
+        "redLightCamera",
+        "roadWorks",
+        "roadHazard",
+      ]);
+      expect(testedAlerts.map((item) => item.subtype)).toEqual([
+        "fixed",
+        "red_light",
+        "construction",
+        "hazard",
+      ]);
+      expect(testedAlerts.map((item) => item.primaryCapability)).toEqual([
+        "maxspeed",
+        "trafficSignals",
+        "roadworks",
+        "hazard",
+      ]);
+      expect(testedAlerts.map((item) => item.capabilities)).toEqual([
+        ["maxspeed"],
+        ["trafficSignals"],
+        ["roadworks"],
+        ["hazard"],
+      ]);
+      expect(testedAlerts[0]?.speedLimitKmh).toBe(50);
+      expect(testedAlerts.slice(1).every((item) => item.speedLimitKmh === null)).toBe(true);
+      expect(testedAlerts.every((item) => item.operationalStatus === "operational")).toBe(true);
+      expect(testedAlerts.every((item) => item.active)).toBe(true);
+      expect(testedAlerts.every((item) => item.osmPresenceStatus === "present")).toBe(true);
+      expect(testedAlerts.every((item, index) =>
+        index === 0 || item.distanceMeters >= testedAlerts[index - 1]!.distanceMeters
+      )).toBe(true);
     } finally {
       await app.close();
     }
