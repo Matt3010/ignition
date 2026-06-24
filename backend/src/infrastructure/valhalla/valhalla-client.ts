@@ -111,7 +111,7 @@ export class ValhallaClient {
 
 function toValhallaResponseError(statusCode: number, body: string): Error {
   const payload = parseValhallaErrorPayload(body);
-  const errorCode = typeof payload?.error_code === "number" ? payload.error_code : null;
+  const errorCode = parseValhallaErrorCode(payload?.error_code);
   const detail = typeof payload?.error === "string" ? payload.error : body.trim();
   const message = detail
     ? `Valhalla responded ${statusCode}${errorCode === null ? "" : ` (${errorCode})`}: ${detail}`
@@ -122,6 +122,22 @@ function toValhallaResponseError(statusCode: number, body: string): Error {
   }
 
   return new ValhallaHttpError(message, statusCode, errorCode);
+}
+
+function parseValhallaErrorCode(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (/^\d+$/.test(normalized)) {
+      const parsed = Number(normalized);
+      return Number.isSafeInteger(parsed) ? parsed : null;
+    }
+  }
+
+  return null;
 }
 
 function parseValhallaErrorPayload(body: string): ValhallaErrorPayload | null {

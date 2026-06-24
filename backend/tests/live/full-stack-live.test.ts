@@ -99,7 +99,7 @@ describeLive("production dependency graph end to end", () => {
         [43.7373, 7.42375],
         [43.737454, 7.42492],
       ] as const;
-      const startedAt = Date.now() - 8_000;
+      const startedAtSeconds = Math.floor(Date.now() / 1000) - 8;
       let finalBody: Record<string, unknown> | null = null;
 
       for (const [index, [latitude, longitude]] of coordinates.entries()) {
@@ -110,9 +110,9 @@ describeLive("production dependency graph end to end", () => {
             latitude,
             longitude,
             speedKmh: 25,
-            course: 80,
-            horizontalAccuracyMeters: 8,
-            timestamp: new Date(startedAt + index * 1_500).toISOString(),
+            course: null,
+            horizontalAccuracyMeters: 12,
+            timestamp: new Date((startedAtSeconds + index * 2) * 1000).toISOString(),
             sessionId,
           },
         });
