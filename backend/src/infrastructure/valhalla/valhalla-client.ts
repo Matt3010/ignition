@@ -16,12 +16,19 @@ interface ValhallaErrorPayload {
 }
 
 const VALHALLA_NO_MATCH_ERROR_CODES = new Set([170, 171, 441, 442, 443, 444]);
+const VALHALLA_NO_MATCH_MESSAGES = [
+  "locations are in unconnected regions",
+  "no suitable edges near location",
+  "no data found for location",
+  "no path could be found for input",
+  "map matching failed",
+] as const;
 
 export class ValhallaNoMatchError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly errorCode: number,
+    readonly errorCode: number | null,
   ) {
     super(message);
     this.name = "ValhallaNoMatchError";
@@ -117,11 +124,19 @@ function toValhallaResponseError(statusCode: number, body: string): Error {
     ? `Valhalla responded ${statusCode}${errorCode === null ? "" : ` (${errorCode})`}: ${detail}`
     : `Valhalla responded ${statusCode}${errorCode === null ? "" : ` (${errorCode})`}`;
 
-  if (errorCode !== null && VALHALLA_NO_MATCH_ERROR_CODES.has(errorCode)) {
+  if (
+    (errorCode !== null && VALHALLA_NO_MATCH_ERROR_CODES.has(errorCode)) ||
+    isValhallaNoMatchMessage(detail)
+  ) {
     return new ValhallaNoMatchError(message, statusCode, errorCode);
   }
 
   return new ValhallaHttpError(message, statusCode, errorCode);
+}
+
+function isValhallaNoMatchMessage(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return VALHALLA_NO_MATCH_MESSAGES.some((message) => normalized.includes(message));
 }
 
 function parseValhallaErrorCode(value: unknown): number | null {
