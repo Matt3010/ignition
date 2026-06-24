@@ -48,21 +48,35 @@ describeLive("real Valhalla network fault injection", () => {
       expect(health.statusCode).toBe(200);
       expect(health.json()).toMatchObject({ status: "degraded", database: "up", valhalla: "down" });
 
-      const response = await app.inject({
-        method: "POST",
-        url: "/api/v1/road-context",
-        payload: {
-          latitude: 43.737454,
-          longitude: 7.42492,
-          speedKmh: 25,
-          course: 80,
-          horizontalAccuracyMeters: 8,
-          timestamp: new Date().toISOString(),
-          sessionId: randomUUID(),
-        },
+      const failedSessionId = randomUUID();
+      const failedTraceStartedAt = Date.now() - 2_000;
+      const failedTrace = [
+        { latitude: 43.73702, longitude: 7.42212 },
+        { latitude: 43.737105, longitude: 7.42265 },
+      ] as const;
+
+      let failedResponse: Awaited<ReturnType<typeof app.inject>> | null = null;
+      for (const [index, point] of failedTrace.entries()) {
+        failedResponse = await app.inject({
+          method: "POST",
+          url: "/api/v1/road-context",
+          payload: {
+            ...point,
+            speedKmh: 25,
+            course: null,
+            horizontalAccuracyMeters: 12,
+            timestamp: new Date(failedTraceStartedAt + index * 2_000).toISOString(),
+            sessionId: failedSessionId,
+          },
+        });
+        expect(failedResponse.statusCode, failedResponse.body).toBe(200);
+        if (index === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(failedResponse).not.toBeNull();
+      expect(failedResponse!.json()).toMatchObject({
+        matched: false,
+        matchStatus: "providerUnavailable",
       });
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ matched: false, matchStatus: "providerUnavailable" });
 
       const remove = await fetch(`${adminBaseUrl}/proxies/valhalla/toxics/slow-downstream`, {
         method: "DELETE",
@@ -74,6 +88,7 @@ describeLive("real Valhalla network fault injection", () => {
           DATABASE_URL: databaseUrl!,
           VALHALLA_BASE_URL: proxyBaseUrl,
           VALHALLA_TIMEOUT_MS: 5_000,
+          MIN_CLIENT_INTERVAL_MS: 1,
           LOG_LEVEL: "silent",
         }),
       );
@@ -84,6 +99,41 @@ describeLive("real Valhalla network fault injection", () => {
           status: "ok",
           database: "up",
           valhalla: "up",
+        });
+
+        const recoveredSessionId = randomUUID();
+        const recoveredStartedAtSeconds = Math.floor(Date.now() / 1000) - 8;
+        const recoveredTrace = [
+          [43.73702, 7.42212],
+          [43.737105, 7.42265],
+          [43.73719, 7.42318],
+          [43.7373, 7.42375],
+          [43.737454, 7.42492],
+        ] as const;
+        let recoveredResponse: Awaited<ReturnType<typeof recovered.inject>> | null = null;
+        for (const [index, [latitude, longitude]] of recoveredTrace.entries()) {
+          recoveredResponse = await recovered.inject({
+            method: "POST",
+            url: "/api/v1/road-context",
+            payload: {
+              latitude,
+              longitude,
+              speedKmh: 25,
+              course: null,
+              horizontalAccuracyMeters: 12,
+              timestamp: new Date((recoveredStartedAtSeconds + index * 2) * 1000).toISOString(),
+              sessionId: recoveredSessionId,
+            },
+          });
+          expect(recoveredResponse.statusCode, recoveredResponse.body).toBe(200);
+          if (index < recoveredTrace.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+        expect(recoveredResponse).not.toBeNull();
+        expect(recoveredResponse!.json()).toMatchObject({
+          matched: true,
+          matchStatus: "matched",
         });
       } finally {
         await recovered.close();
