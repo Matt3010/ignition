@@ -5,7 +5,7 @@ import { calculateRoadConfidence } from "../../domain/services/confidence.js";
 import { normalizeCourse } from "../../domain/services/geo.js";
 import { parseMaxspeed } from "../../domain/services/maxspeed.js";
 import { hashSessionId } from "../../domain/services/session-id.js";
-import type { ValhallaTracePoint } from "./valhalla-client.js";
+import { ValhallaNoMatchError, type ValhallaTracePoint } from "./valhalla-client.js";
 
 export interface ValhallaGateway {
   traceAttributes(points: ValhallaTracePoint[]): Promise<unknown>;
@@ -102,6 +102,19 @@ export class ValhallaRoadContextProvider implements RoadContextProvider {
       });
       return { ...base, confidence };
     } catch (error) {
+      if (error instanceof ValhallaNoMatchError) {
+        this.logger?.warn(
+          {
+            error: error.message,
+            valhallaStatusCode: error.statusCode,
+            valhallaErrorCode: error.errorCode,
+            sessionHash: hashSessionId(input.sample.sessionId),
+          },
+          "Valhalla could not match the trace",
+        );
+        return unmatched(input.sample, 0.15, "noMatch");
+      }
+
       this.logger?.warn(
         {
           error: error instanceof Error ? error.message : String(error),

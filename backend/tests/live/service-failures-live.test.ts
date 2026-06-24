@@ -45,7 +45,7 @@ describeLive("real infrastructure failure handling", () => {
         },
       });
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ matched: false, matchStatus: "providerError" });
+      expect(response.json()).toMatchObject({ matched: false, matchStatus: "providerUnavailable" });
     } finally {
       await app.close();
     }

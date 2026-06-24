@@ -8,6 +8,37 @@ export interface ValhallaTracePoint {
   accuracy?: number;
 }
 
+interface ValhallaErrorPayload {
+  error_code?: unknown;
+  error?: unknown;
+  status_code?: unknown;
+  status?: unknown;
+}
+
+const VALHALLA_NO_MATCH_ERROR_CODES = new Set([170, 171, 441, 442, 443, 444]);
+
+export class ValhallaNoMatchError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly errorCode: number,
+  ) {
+    super(message);
+    this.name = "ValhallaNoMatchError";
+  }
+}
+
+export class ValhallaHttpError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly errorCode: number | null,
+  ) {
+    super(message);
+    this.name = "ValhallaHttpError";
+  }
+}
+
 export class ValhallaClient {
   constructor(private readonly config: AppConfig) {}
 
@@ -42,8 +73,21 @@ export class ValhallaClient {
         }),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`Valhalla responded ${response.status}`);
-      return response.json();
+
+      const body = await response.text();
+      if (!response.ok) {
+        throw toValhallaResponseError(response.status, body);
+      }
+
+      try {
+        return JSON.parse(body) as unknown;
+      } catch (error) {
+        throw new ValhallaHttpError(
+          `Valhalla returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+          response.status,
+          null,
+        );
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -62,5 +106,29 @@ export class ValhallaClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+}
+
+function toValhallaResponseError(statusCode: number, body: string): Error {
+  const payload = parseValhallaErrorPayload(body);
+  const errorCode = typeof payload?.error_code === "number" ? payload.error_code : null;
+  const detail = typeof payload?.error === "string" ? payload.error : body.trim();
+  const message = detail
+    ? `Valhalla responded ${statusCode}${errorCode === null ? "" : ` (${errorCode})`}: ${detail}`
+    : `Valhalla responded ${statusCode}${errorCode === null ? "" : ` (${errorCode})`}`;
+
+  if (errorCode !== null && VALHALLA_NO_MATCH_ERROR_CODES.has(errorCode)) {
+    return new ValhallaNoMatchError(message, statusCode, errorCode);
+  }
+
+  return new ValhallaHttpError(message, statusCode, errorCode);
+}
+
+function parseValhallaErrorPayload(body: string): ValhallaErrorPayload | null {
+  try {
+    const value = JSON.parse(body) as unknown;
+    return value !== null && typeof value === "object" ? (value as ValhallaErrorPayload) : null;
+  } catch {
+    return null;
   }
 }

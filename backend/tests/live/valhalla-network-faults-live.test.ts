@@ -62,7 +62,7 @@ describeLive("real Valhalla network fault injection", () => {
         },
       });
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ matched: false, matchStatus: "providerError" });
+      expect(response.json()).toMatchObject({ matched: false, matchStatus: "providerUnavailable" });
 
       const remove = await fetch(`${adminBaseUrl}/proxies/valhalla/toxics/slow-downstream`, {
         method: "DELETE",
