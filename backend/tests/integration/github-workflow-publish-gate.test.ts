@@ -21,6 +21,19 @@ describe("GHCR publication gate", () => {
     expect(ci).toContain("Run live Valhalla tests");
   });
 
+
+  it("builds the compiled server before running the real runtime lifecycle test", async () => {
+    const ci = await readWorkflow("ci.yml");
+    const valhallaJob = ci.split(/\n\x20{2}valhalla:\n/, 2)[1]?.split(/\n\x20{2}publish-image:\n/, 1)[0];
+
+    expect(valhallaJob).toBeDefined();
+    const buildIndex = valhallaJob!.indexOf("- name: Build\n        run: npm run build");
+    const runtimeIndex = valhallaJob!.indexOf("- name: Run real server lifecycle tests");
+
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(runtimeIndex).toBeGreaterThan(buildIndex);
+  });
+
   it("keeps all automated checks in the single CI workflow", async () => {
     const workflowsDir = path.join(repositoryRoot, ".github", "workflows");
 
