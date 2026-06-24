@@ -31,21 +31,35 @@ describeLive("real infrastructure failure handling", () => {
       expect(ready.statusCode).toBe(503);
       expect(ready.json()).toMatchObject({ ready: false, database: "up", valhalla: "down" });
 
-      const response = await app.inject({
-        method: "POST",
-        url: "/api/v1/road-context",
-        payload: {
-          latitude: 43.737454,
-          longitude: 7.42492,
-          speedKmh: 25,
-          course: 80,
-          horizontalAccuracyMeters: 8,
-          timestamp: new Date().toISOString(),
-          sessionId: randomUUID(),
-        },
+      const sessionId = randomUUID();
+      const startedAt = Date.now() - 2_000;
+      const trace = [
+        { latitude: 43.73702, longitude: 7.42212 },
+        { latitude: 43.737105, longitude: 7.42265 },
+      ];
+
+      let response = null as Awaited<ReturnType<typeof app.inject>> | null;
+      for (const [index, point] of trace.entries()) {
+        response = await app.inject({
+          method: "POST",
+          url: "/api/v1/road-context",
+          payload: {
+            ...point,
+            speedKmh: 25,
+            course: null,
+            horizontalAccuracyMeters: 12,
+            timestamp: new Date(startedAt + index * 2_000).toISOString(),
+            sessionId,
+          },
+        });
+        expect(response.statusCode).toBe(200);
+      }
+
+      expect(response).not.toBeNull();
+      expect(response!.json()).toMatchObject({
+        matched: false,
+        matchStatus: "providerUnavailable",
       });
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ matched: false, matchStatus: "providerUnavailable" });
     } finally {
       await app.close();
     }
@@ -100,27 +114,42 @@ describeLive("real infrastructure failure handling", () => {
     try {
       const health = await app.inject({ method: "GET", url: "/health" });
       expect(health.statusCode).toBe(200);
-      expect(health.json()).toMatchObject({ database: "up", valhalla: "up" });
-
-      const response = await app.inject({
-        method: "POST",
-        url: "/api/v1/road-context",
-        payload: {
-          latitude: 43.737454,
-          longitude: 7.42492,
-          speedKmh: 25,
-          course: 80,
-          horizontalAccuracyMeters: 8,
-          timestamp: new Date().toISOString(),
-          sessionId: randomUUID(),
-        },
+      expect(health.json()).toMatchObject({
+        status: "degraded",
+        database: "down",
+        valhalla: "up",
       });
-      expect(response.statusCode).toBe(500);
-      expect(response.json()).toEqual({
+
+      const sessionId = randomUUID();
+      const startedAt = Date.now() - 2_000;
+      const trace = [
+        { latitude: 43.73702, longitude: 7.42212 },
+        { latitude: 43.737105, longitude: 7.42265 },
+      ];
+
+      let response = null as Awaited<ReturnType<typeof app.inject>> | null;
+      for (const [index, point] of trace.entries()) {
+        response = await app.inject({
+          method: "POST",
+          url: "/api/v1/road-context",
+          payload: {
+            ...point,
+            speedKmh: 25,
+            course: null,
+            horizontalAccuracyMeters: 12,
+            timestamp: new Date(startedAt + index * 2_000).toISOString(),
+            sessionId,
+          },
+        });
+      }
+
+      expect(response).not.toBeNull();
+      expect(response!.statusCode).toBe(500);
+      expect(response!.json()).toEqual({
         error: { code: "INTERNAL_ERROR", message: "Errore interno", details: [] },
       });
-      expect(response.body).not.toContain("permission denied");
-      expect(response.body).not.toContain("road_alerts");
+      expect(response!.body).not.toContain("permission denied");
+      expect(response!.body).not.toContain("road_alerts");
     } finally {
       await app.close();
       await admin.query(`REVOKE USAGE ON SCHEMA public FROM ${quotedRole}`).catch(() => undefined);
