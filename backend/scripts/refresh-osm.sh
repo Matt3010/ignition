@@ -103,29 +103,36 @@ wait_for_valhalla_health() {
 }
 
 verify_valhalla_tile_metadata() {
-  local response
+  local response metadata_summary has_admins
   response="$(curl -fsS --max-time 5 "$VALHALLA_METADATA_URL")" || {
     echo "{\"event\":\"valhalla_metadata_request_failed\",\"region\":\"$OSM_REGION_LABEL\",\"url\":\"$(json_escape "$VALHALLA_METADATA_URL")\"}" >&2
     return 1
   }
-  if ! printf '%s' "$response" | node -e '
+  metadata_summary="$(printf '%s' "$response" | node -e '
     let body = "";
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", chunk => { body += chunk; });
     process.stdin.on("end", () => {
       try {
         const status = JSON.parse(body);
-        const valid = status.has_tiles === true && status.has_admins === true && status.has_timezones === true;
-        process.exit(valid ? 0 : 1);
+        const valid = status.has_tiles === true && status.has_timezones === true;
+        if (!valid) process.exit(1);
+        process.stdout.write(status.has_admins === true ? "true" : "false");
       } catch {
         process.exit(1);
       }
     });
-  '; then
-    echo "{\"event\":\"valhalla_metadata_invalid\",\"region\":\"$OSM_REGION_LABEL\",\"requires\":[\"has_tiles\",\"has_admins\",\"has_timezones\"]}" >&2
+  ')" || {
+    echo "{\"event\":\"valhalla_metadata_invalid\",\"region\":\"$OSM_REGION_LABEL\",\"requires\":[\"has_tiles\",\"has_timezones\"]}" >&2
     return 1
+  }
+  has_admins="$metadata_summary"
+  echo "{\"event\":\"valhalla_metadata_ready\",\"region\":\"$OSM_REGION_LABEL\",\"hasTiles\":true,\"hasAdmins\":$has_admins,\"hasTimezones\":true}"
+  if [[ "$has_admins" == "true" ]]; then
+    echo "[INFO] Activated Valhalla tiles with administrative metadata and timezone data."
+  else
+    echo "[INFO] Activated Valhalla tiles without administrative metadata; routing and map matching remain available. Timezone data is present."
   fi
-  echo "{\"event\":\"valhalla_metadata_ready\",\"region\":\"$OSM_REGION_LABEL\",\"hasTiles\":true,\"hasAdmins\":true,\"hasTimezones\":true}"
 }
 
 clear_directory() {

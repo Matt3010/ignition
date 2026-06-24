@@ -22,7 +22,13 @@ async function makeFixture() {
 set -euo pipefail
 printf '%s\n' "$*" >> "$DOCKER_LOG"
 if [[ "$*" == *"--entrypoint valhalla_build_admins"* ]]; then
-  python3 -c 'import sqlite3,sys; p=sys.argv[1]; c=sqlite3.connect(p); c.execute("create table admins(id integer)"); c.commit(); c.close()' "$VALHALLA_BUILD_HOST_TILE_DIR/admins.sqlite"
+  python3 -c 'import sqlite3,sys; p=sys.argv[1]; c=sqlite3.connect(p); c.execute("create table admins(id integer)"); c.execute("insert into admins values (1)"); c.commit(); c.close()' "$VALHALLA_BUILD_HOST_TILE_DIR/admins.sqlite"
+  if [[ "\${ADMIN_MOCK_QUALITY:-valid}" == "incomplete" ]]; then
+    echo "[WARN] Italia is missing way member 123"
+    echo "[WARN] Italia is degenerate and will be skipped"
+    echo "GEOS error: TopologyException: side location conflict"
+    echo "[ERROR] sqlite3_step() error: NOT NULL constraint failed: admin_access.admin_id. Ignore if not using a planet extract"
+  fi
   exit 0
 fi
 mkdir -p "$VALHALLA_BUILD_HOST_TILE_DIR/valhalla_tiles/2/000"
@@ -34,11 +40,12 @@ touch "$VALHALLA_BUILD_HOST_TILE_DIR/valhalla_tiles/2/000/fixture.gph"
     path.join(bin, "sqlite3"),
     `#!/usr/bin/env bash
 set -euo pipefail
-python3 - "$3" <<'PYSQL'
+python3 - "$3" "$4" <<'PYSQL'
 import sqlite3, sys
 try:
     connection = sqlite3.connect(sys.argv[1])
-    result = connection.execute("PRAGMA quick_check").fetchone()
+    query = sys.argv[2] if len(sys.argv) > 2 else "PRAGMA quick_check;"
+    result = connection.execute(query).fetchone()
     connection.close()
     print(result[0] if result else "")
 except Exception:
@@ -262,5 +269,30 @@ ${second.stderr}`).toBe(0);
     expect(calls).toContain("-s enhance -e cleanup");
     expect(second.stdout).toContain("valhalla_timezone_archive_verified");
   });
+
+
+  it("automatically rejects incomplete regional admin metadata and continues without admins", async () => {
+    const test = await makeFixture();
+    const result = runFixture(test, { ADMIN_MOCK_QUALITY: "incomplete" });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("valhalla_admin_database_rejected");
+    expect(result.stdout).toContain("[INFO] Valhalla admin database rejected");
+    expect(result.stdout).toContain('"hasAdmins":false');
+    await expect(readFile(path.join(test.tileDir, "admins.sqlite"), "utf8")).rejects.toThrow();
+    expect(await readFile(path.join(test.tileDir, ".build-state", "admins.rejected"), "utf8")).toBe("");
+  });
+
+  it("accepts a clean admin database and prints both structured and textual logs", async () => {
+    const test = await makeFixture();
+    const result = runFixture(test);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("valhalla_admin_database_accepted");
+    expect(result.stdout).toContain("[INFO] Valhalla admin database accepted");
+    expect(result.stdout).toContain('"hasAdmins":true');
+  });
+
+
 
 });

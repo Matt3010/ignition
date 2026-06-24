@@ -102,6 +102,7 @@ BUILD_CONTAINER_NAME="ignition-valhalla-build-$$-$RANDOM"
 BUILD_CONTAINER_RUNNING=false
 PROGRESS_PID=""
 TIMEZONE_DATABASE_CHANGED=false
+ADMIN_DATABASE_CHANGED=false
 
 if ! [[ "$VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
   echo "VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS must be a positive integer" >&2
@@ -154,7 +155,6 @@ stop_progress_monitor() {
     kill "$PROGRESS_PID" >/dev/null 2>&1 || true
     wait "$PROGRESS_PID" >/dev/null 2>&1 || true
     PROGRESS_PID=""
-TIMEZONE_DATABASE_CHANGED=false
   fi
 }
 
@@ -229,11 +229,26 @@ build_timezone_database() {
 }
 
 build_admin_database() {
-  local target="$1" marker="$2"
-  [[ -f "$marker" ]] && validate_sqlite "$target" && return 0
+  local target="$1" accepted_marker="$2" rejected_marker="$3"
+  local quality_file="$STATE_DIR/admins.quality.json"
 
-  rm -f "$target"
-  echo '{"event":"valhalla_support_database_started","database":"admins"}'
+  if [[ -f "$accepted_marker" ]] && validate_sqlite "$target"; then
+    return 0
+  fi
+  if [[ -f "$rejected_marker" ]] && [[ ! -e "$target" ]]; then
+    return 0
+  fi
+
+  local had_valid_database=false admin_log="$STATE_DIR/admins-build.log"
+  if validate_sqlite "$target"; then
+    had_valid_database=true
+  fi
+
+  rm -f "$target" "$accepted_marker" "$rejected_marker"
+  : > "$admin_log"
+  echo '{"event":"valhalla_support_database_started","database":"admins","mode":"automatic"}'
+
+  set +e
   docker run --rm \
     --platform "$VALHALLA_DOCKER_PLATFORM" \
     --entrypoint valhalla_build_admins \
@@ -241,13 +256,63 @@ build_admin_database() {
     -v "${VALHALLA_MOUNT_DIR_ABS}:/custom_files" \
     "$VALHALLA_DOCKER_IMAGE" \
     -c /custom_files/valhalla.json \
-    "${inputs[@]}"
-  validate_sqlite "$target" || {
-    echo "Valhalla admins database is missing or invalid" >&2
-    return 1
-  }
-  write_marker "$marker"
-  echo "{\"event\":\"valhalla_support_database_finished\",\"database\":\"admins\",\"bytes\":$(json_number "$(stat -c %s "$target" 2>/dev/null || printf 0)")}"
+    "${inputs[@]}" 2>&1 | tee "$admin_log"
+  local admin_status=${PIPESTATUS[0]}
+  set -e
+
+  if (( admin_status != 0 )); then
+    echo "Valhalla admin database builder failed with exit code $admin_status" >&2
+    return "$admin_status"
+  fi
+
+  local missing_members degenerate_relations topology_errors access_insert_errors admin_areas
+  missing_members="$(grep -c 'is missing way member' "$admin_log" 2>/dev/null || true)"
+  degenerate_relations="$(grep -c 'is degenerate and will be skipped' "$admin_log" 2>/dev/null || true)"
+  topology_errors="$(grep -c 'TopologyException' "$admin_log" 2>/dev/null || true)"
+  access_insert_errors="$(grep -c 'NOT NULL constraint failed: admin_access.admin_id' "$admin_log" 2>/dev/null || true)"
+  admin_areas="0"
+
+  if validate_sqlite "$target"; then
+    if sqlite3 -batch -noheader "$target" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='admins';" 2>/dev/null | grep -q '^1$'; then
+      admin_areas="$(sqlite3 -batch -noheader "$target" 'SELECT COUNT(*) FROM admins;' 2>/dev/null || printf '0')"
+    elif sqlite3 -batch -noheader "$target" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin';" 2>/dev/null | grep -q '^1$'; then
+      admin_areas="$(sqlite3 -batch -noheader "$target" 'SELECT COUNT(*) FROM admin;' 2>/dev/null || printf '0')"
+    fi
+  fi
+  admin_areas="$(json_number "$admin_areas")"
+
+  local accepted=true reason="quality_checks_passed"
+  if ! validate_sqlite "$target"; then
+    accepted=false
+    reason="invalid_sqlite_database"
+  elif (( admin_areas == 0 )); then
+    accepted=false
+    reason="empty_admin_database"
+  elif (( missing_members > 0 || degenerate_relations > 0 || topology_errors > 0 || access_insert_errors > 0 )); then
+    accepted=false
+    reason="incomplete_regional_extract"
+  fi
+
+  if [[ "$accepted" == "true" ]]; then
+    write_marker "$accepted_marker"
+    rm -f "$rejected_marker"
+    ADMIN_DATABASE_CHANGED=true
+    printf '{"accepted":true,"reason":"%s","adminAreas":%s,"missingMembers":%s,"degenerateRelations":%s,"topologyErrors":%s,"accessInsertErrors":%s}\n' \
+      "$reason" "$admin_areas" "$missing_members" "$degenerate_relations" "$topology_errors" "$access_insert_errors" > "$quality_file"
+    echo "{\"event\":\"valhalla_admin_database_accepted\",\"adminAreas\":$admin_areas,\"missingMembers\":$missing_members,\"degenerateRelations\":$degenerate_relations,\"topologyErrors\":$topology_errors,\"accessInsertErrors\":$access_insert_errors,\"bytes\":$(json_number "$(stat -c %s "$target" 2>/dev/null || printf 0)")}" 
+    echo "[INFO] Valhalla admin database accepted. Areas=$admin_areas, size=$(json_number "$(stat -c %s "$target" 2>/dev/null || printf 0)") bytes."
+    return 0
+  fi
+
+  rm -f "$target" "$accepted_marker"
+  write_marker "$rejected_marker"
+  if [[ "$had_valid_database" == "true" ]]; then
+    ADMIN_DATABASE_CHANGED=true
+  fi
+  printf '{"accepted":false,"reason":"%s","adminAreas":%s,"missingMembers":%s,"degenerateRelations":%s,"topologyErrors":%s,"accessInsertErrors":%s}\n' \
+    "$reason" "$admin_areas" "$missing_members" "$degenerate_relations" "$topology_errors" "$access_insert_errors" > "$quality_file"
+  echo "{\"event\":\"valhalla_admin_database_rejected\",\"reason\":\"$reason\",\"adminAreas\":$admin_areas,\"missingMembers\":$missing_members,\"degenerateRelations\":$degenerate_relations,\"topologyErrors\":$topology_errors,\"accessInsertErrors\":$access_insert_errors,\"action\":\"continuing_without_admin_database\"}"
+  echo "[INFO] Valhalla admin database rejected: the OSM extract is incomplete for reliable administrative metadata. Continuing without admins.sqlite. Areas=$admin_areas, missingMembers=$missing_members, degenerateRelations=$degenerate_relations, topologyErrors=$topology_errors, accessInsertErrors=$access_insert_errors."
 }
 
 support_databases_changed=false
@@ -255,8 +320,8 @@ build_timezone_database "$TIMEZONE_DB" "$STATE_DIR/timezones.complete"
 if [[ "$TIMEZONE_DATABASE_CHANGED" == "true" ]]; then
   support_databases_changed=true
 fi
-if [[ ! -f "$STATE_DIR/admins.complete" ]] || ! validate_sqlite "$ADMIN_DB"; then
-  build_admin_database "$ADMIN_DB" "$STATE_DIR/admins.complete"
+build_admin_database "$ADMIN_DB" "$STATE_DIR/admins.complete" "$STATE_DIR/admins.rejected"
+if [[ "$ADMIN_DATABASE_CHANGED" == "true" ]]; then
   support_databases_changed=true
 fi
 
@@ -266,7 +331,11 @@ fi
 # stages so the resulting tiles actually contain the new metadata.
 if [[ "$support_databases_changed" == "true" ]]; then
   rm -f "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"
-  echo '{"event":"valhalla_build_downstream_invalidated","reason":"support_databases_changed","preservedStage":"constructedges"}'
+  if [[ -f "$STATE_DIR/constructedges.complete" ]]; then
+    echo '{"event":"valhalla_build_downstream_invalidated","reason":"support_databases_changed","preservedStage":"constructedges"}'
+  else
+    echo '{"event":"valhalla_build_support_databases_changed","downstreamStagesWillUseUpdatedMetadata":true}'
+  fi
 fi
 
 start_progress_monitor() {
@@ -348,7 +417,10 @@ if ! find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -print -
   echo "Valhalla build completed without graph tiles" >&2
   exit 1
 fi
-validate_sqlite "$ADMIN_DB" || { echo "Valhalla build completed without a valid admins.sqlite" >&2; exit 1; }
 validate_sqlite "$TIMEZONE_DB" || { echo "Valhalla build completed without a valid timezones.sqlite" >&2; exit 1; }
+has_admins=false
+if validate_sqlite "$ADMIN_DB" && [[ -f "$STATE_DIR/admins.complete" ]]; then
+  has_admins=true
+fi
 
-echo '{"event":"valhalla_build_complete","progressPreserved":true,"hasAdmins":true,"hasTimezones":true}'
+echo "{\"event\":\"valhalla_build_complete\",\"progressPreserved\":true,\"hasAdmins\":$has_admins,\"hasTimezones\":true}"

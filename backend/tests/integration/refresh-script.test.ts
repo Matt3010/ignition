@@ -13,6 +13,7 @@ async function fixture(
     invalidStaging?: boolean;
     healthFails?: boolean;
     metadataFails?: boolean;
+    adminsUnavailable?: boolean;
     initialTiles?: boolean;
     buildFails?: boolean;
   } = {},
@@ -40,9 +41,14 @@ exit 0
 printf '%s\n' "$*" >> "$FAKE_CURL_LOG"
 if [[ "${options.healthFails ?? false}" == "true" ]]; then exit 22; fi
 if [[ "${options.metadataFails ?? false}" == "true" ]]; then
-  printf '%s\n' '{"has_tiles":true,"has_admins":false,"has_timezones":true}'
+  printf '%s
+' '{"has_tiles":true,"has_admins":true,"has_timezones":false}'
+elif [[ "${options.adminsUnavailable ?? false}" == "true" ]]; then
+  printf '%s
+' '{"has_tiles":true,"has_admins":false,"has_timezones":true}'
 else
-  printf '%s\n' '{"has_tiles":true,"has_admins":true,"has_timezones":true}'
+  printf '%s
+' '{"has_tiles":true,"has_admins":true,"has_timezones":true}'
 fi
 exit 0
 `,
@@ -140,6 +146,19 @@ describeOnUnix("OSM refresh script", () => {
       ).resolves.toContain("old");
       const npmLog = await readFile(test.env.FAKE_NPM_LOG, "utf8");
       expect(npmLog).not.toContain("run import:osm-alerts");
+    } finally {
+      await rm(test.root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts Valhalla metadata without admins and prints an informational message", async () => {
+    const test = await fixture({ adminsUnavailable: true });
+    try {
+      const result = await execFileAsync("bash", [script], { cwd: process.cwd(), env: test.env });
+      expect(result.stdout).toContain('"hasAdmins":false');
+      expect(result.stdout).toContain("Activated Valhalla tiles without administrative metadata");
+      const npmLog = await readFile(test.env.FAKE_NPM_LOG, "utf8");
+      expect(npmLog).toContain("run import:osm-alerts");
     } finally {
       await rm(test.root, { recursive: true, force: true });
     }

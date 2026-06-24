@@ -443,21 +443,29 @@ Gli eventi principali sono `osm_download_completed`, `osm_download_reused`, `osm
 
 ### Valhalla support databases and progress
 
-Before graph tile construction, the maintenance build now creates and checkpoints
-`admins.sqlite` and `timezones.sqlite` in the staging directory. The files are
-validated with SQLite `PRAGMA quick_check`, not only by filename or header. If these files
-are introduced into an older resumable staging build, only the downstream
-`build` and `enhance/cleanup` phases are invalidated; the expensive
-`initialize/constructedges` checkpoint is preserved.
+Before graph tile construction, the maintenance build creates and checkpoints
+`timezones.sqlite` and automatically evaluates a candidate `admins.sqlite` in the staging
+directory. Both candidates are validated with SQLite `PRAGMA quick_check`, not only by
+filename or header. Administrative metadata is accepted only when the generated database
+contains admin rows and the builder reports no missing relation members, degenerate
+relations, GEOS topology failures, or `admin_access.admin_id` insertion errors. Otherwise
+`admins.sqlite` is removed, a structured JSON event and a readable `[INFO]` message are
+printed by `osm-refresh`, and the tile build continues without administrative metadata.
+No application setting or environment variable is required. If support databases change
+inside an older resumable staging build, only the downstream `build` and
+`enhance/cleanup` phases are invalidated; the expensive `initialize/constructedges`
+checkpoint is preserved.
 
 While a stage is running, `valhalla_build_progress` is emitted every
 `VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS` seconds (default: `60`) with elapsed
 time, staging size, file count, graph tile count, and manifest tile count when
 available. Stage completion also emits `valhalla_build_warning_summary` so OSM
 data-quality warnings remain visible without being mistaken for fatal failures.
-After activation, the Valhalla `/status` response must report `has_tiles`,
-`has_admins`, and `has_timezones` as true; otherwise the deployment is rolled
-back before alerts are imported.
+After activation, the Valhalla `/status` response must report `has_tiles` and
+`has_timezones` as true; otherwise the deployment is rolled back before alerts are
+imported. `has_admins` is logged but is optional because regional OSM extracts can contain
+incomplete administrative boundary relations. Routing and map matching remain available
+when it is false.
 
 Valhalla espone i flag `has_tiles`, `has_admins` e `has_timezones` solo nello status verbose. Il template abilita quindi `service_limits.status.allow_verbose` e il maintenance usa `VALHALLA_METADATA_URL` con `verbose=true` prima di importare gli alert.
 
