@@ -166,11 +166,14 @@ move_directory_contents() {
 }
 
 snapshot_current_tiles() {
-  clear_directory "$VALHALLA_PREVIOUS_TILE_DIR"
-  mkdir -p "$VALHALLA_TILE_DIR"
-  # Hard-link files where possible: this preserves a rollback copy without
-  # duplicating the large tile payload on the same filesystem.
-  cp -al "$VALHALLA_TILE_DIR/." "$VALHALLA_PREVIOUS_TILE_DIR/" || return 1
+  clear_directory "$VALHALLA_PREVIOUS_TILE_DIR" || return 1
+  mkdir -p "$VALHALLA_TILE_DIR" "$VALHALLA_PREVIOUS_TILE_DIR"
+  # Move the active entries into the rollback directory instead of creating
+  # hard links. Valhalla tiles can be owned by the container runtime user and
+  # Linux protected_hardlinks can reject hard-link copies even on the same filesystem.
+  # Renaming entries is portable, does not duplicate the tile payload and is
+  # reversible by rollback_tiles().
+  move_directory_contents "$VALHALLA_TILE_DIR" "$VALHALLA_PREVIOUS_TILE_DIR" || return 1
   TILE_SNAPSHOT_READY=true
 }
 
@@ -186,7 +189,6 @@ activate_staging_tiles() {
   }
   clear_directory "$VALHALLA_FAILED_TILE_DIR" || return 1
   snapshot_current_tiles || return 1
-  clear_directory "$VALHALLA_TILE_DIR" || return 1
   move_directory_contents "$VALHALLA_STAGING_TILE_DIR" "$VALHALLA_TILE_DIR" || return 1
   rmdir "$VALHALLA_STAGING_TILE_DIR" 2>/dev/null || true
 }
