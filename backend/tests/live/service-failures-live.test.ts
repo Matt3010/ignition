@@ -53,6 +53,10 @@ describeLive("real infrastructure failure handling", () => {
           },
         });
         expect(response.statusCode).toBe(200);
+
+        if (index < trace.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1_100));
+        }
       }
 
       expect(response).not.toBeNull();
