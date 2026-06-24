@@ -34,6 +34,15 @@ describe("GHCR publication gate", () => {
     expect(runtimeIndex).toBeGreaterThan(buildIndex);
   });
 
+
+  it("pulls and runs the published Toxiproxy image from GHCR", async () => {
+    const ci = await readWorkflow("ci.yml");
+
+    expect(ci).toContain("- name: Pull Toxiproxy\n        run: docker pull ghcr.io/shopify/toxiproxy:2.12.0");
+    expect(ci).toContain("ghcr.io/shopify/toxiproxy:2.12.0");
+    expect(ci).not.toMatch(/(^|\s)shopify\/toxiproxy:2\.12\.0(?:\s|$)/m);
+  });
+
   it("keeps all automated checks in the single CI workflow", async () => {
     const workflowsDir = path.join(repositoryRoot, ".github", "workflows");
 
