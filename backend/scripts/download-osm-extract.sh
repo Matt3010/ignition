@@ -6,6 +6,12 @@ OSM_DATA_DIR="${OSM_DATA_DIR:-./data/osm}"
 OSM_DOWNLOAD_MIN_BYTES="${OSM_DOWNLOAD_MIN_BYTES:-1048576}"
 OSM_ALERT_EXTRACT_MIN_BYTES="${OSM_ALERT_EXTRACT_MIN_BYTES:-1}"
 OSM_REUSE_EXISTING_DOWNLOADS="${OSM_REUSE_EXISTING_DOWNLOADS:-false}"
+OSM_DOWNLOAD_RETRIES="${OSM_DOWNLOAD_RETRIES:-5}"
+OSM_DOWNLOAD_RETRY_DELAY_SECONDS="${OSM_DOWNLOAD_RETRY_DELAY_SECONDS:-5}"
+OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS="${OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-20}"
+OSM_DOWNLOAD_MAX_TIME_SECONDS="${OSM_DOWNLOAD_MAX_TIME_SECONDS:-180}"
+OSM_DOWNLOAD_SPEED_TIME_SECONDS="${OSM_DOWNLOAD_SPEED_TIME_SECONDS:-30}"
+OSM_DOWNLOAD_SPEED_LIMIT_BYTES="${OSM_DOWNLOAD_SPEED_LIMIT_BYTES:-1024}"
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
@@ -92,9 +98,14 @@ for region in "${regions[@]}"; do
     curl \
       --fail \
       --location \
-      --retry 5 \
-      --retry-delay 5 \
+      --show-error \
+      --retry "$OSM_DOWNLOAD_RETRIES" \
+      --retry-delay "$OSM_DOWNLOAD_RETRY_DELAY_SECONDS" \
       --retry-all-errors \
+      --connect-timeout "$OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS" \
+      --max-time "$OSM_DOWNLOAD_MAX_TIME_SECONDS" \
+      --speed-time "$OSM_DOWNLOAD_SPEED_TIME_SECONDS" \
+      --speed-limit "$OSM_DOWNLOAD_SPEED_LIMIT_BYTES" \
       --continue-at - \
       --output "$tmp_target" \
       "$url"
