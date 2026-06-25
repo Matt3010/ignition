@@ -46,10 +46,16 @@ export class GetRoadContextUseCase {
         this.alertRepository.getDatasetStatus().catch(() => "unavailable" as const),
       ]);
 
+      const routeCandidates = match.matched
+        ? nearby.filter(
+            (alert) =>
+              alert.distanceMeters <= this.config.ALERT_SEARCH_RADIUS_METERS &&
+              isCandidateOnMatchedRoad(alert.roadId, match.roadId),
+          )
+        : [];
+
       const alerts = filterRelevantAlerts({
-        alerts: nearby.filter(
-          (alert) => alert.distanceMeters <= this.config.ALERT_SEARCH_RADIUS_METERS,
-        ),
+        alerts: routeCandidates,
         userCourse: sample.course,
         matchedRoadBearing: match.bearing,
         userLatitude: sample.latitude,
@@ -122,4 +128,9 @@ export class GetRoadContextUseCase {
       }
     }
   }
+}
+
+function isCandidateOnMatchedRoad(alertRoadId: string | null, matchedRoadId: string | null): boolean {
+  if (!alertRoadId || !matchedRoadId) return true;
+  return alertRoadId === matchedRoadId;
 }

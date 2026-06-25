@@ -84,4 +84,56 @@ describe("road-context alert relevance", () => {
       { id: "nearby-alert", relevance: "nearby" },
     ]);
   });
+
+  it("does not promote nearby alerts to route alerts when the road is not matched", async () => {
+    const provider: RoadContextProvider = {
+      match: async () => ({
+        matched: false,
+        unmatchedReason: "noMatch",
+        roadId: null,
+        roadName: null,
+        speedLimitKmh: null,
+        speedLimitSource: "unknown",
+        roadType: null,
+        confidence: 0.15,
+        direction: "unknown",
+        dataTimestamp: new Date().toISOString(),
+        distanceFromTraceMeters: null,
+        bearing: null,
+        valhallaQuality: 0.15,
+      }),
+      health: async () => "up",
+    };
+
+    const repository: AlertRepository = {
+      findNearby: async () => [baseAlert],
+      hasAvailableAlerts: async () => true,
+      getDatasetStatus: async () => "available",
+      upsertMany: async () => 0,
+      health: async () => "up",
+    };
+
+    const useCase = new GetRoadContextUseCase(
+      provider,
+      repository,
+      new SessionTraceStore(180_000),
+      testConfig(),
+    );
+
+    const response = await useCase.execute({
+      latitude: 45,
+      longitude: 11,
+      speedKmh: 50,
+      course: 0,
+      horizontalAccuracyMeters: 5,
+      timestamp: new Date().toISOString(),
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    expect(response.matchStatus).toBe("noMatch");
+    expect(response.alerts).toEqual([]);
+    expect(response.genericAlerts.map(({ id, relevance }) => ({ id, relevance }))).toEqual([
+      { id: "route-alert", relevance: "nearby" },
+    ]);
+  });
 });
