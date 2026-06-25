@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const backendRoot = resolve(import.meta.dirname, "../..");
@@ -8,6 +10,16 @@ const script = readFileSync(
   "utf8",
 );
 
+function recoveryFunction(): string {
+  const match = script.match(
+    /recover_corrupted_graph_tiles\(\) \{[\s\S]*?\n\}/,
+  );
+  if (!match) {
+    throw new Error("recover_corrupted_graph_tiles function not found");
+  }
+  return match[0];
+}
+
 describe("Valhalla graph-tile corruption recovery", () => {
   it("detects the Valhalla offset-mismatch corruption error", () => {
     expect(script).toContain("recover_corrupted_graph_tiles() {");
@@ -15,23 +27,38 @@ describe("Valhalla graph-tile corruption recovery", () => {
     expect(script).toContain("Tile file might (me|be) corrupted");
   });
 
-  it("preserves constructedges but invalidates and rebuilds downstream stages", () => {
-    const recoveryStart = script.indexOf("recover_corrupted_graph_tiles() {");
-    const stageExecutionStart = script.indexOf(
-      'if [[ ! -f "$STATE_DIR/constructedges.complete" ]]',
-      recoveryStart,
-    );
-    const recovery = script.slice(recoveryStart, stageExecutionStart);
+  it("removes only graph tiles and preserves constructedges intermediates", () => {
+    const root = mkdtempSync(join(tmpdir(), "valhalla-corruption-"));
+    const stateDir = join(root, ".build-state");
+    const tileDir = join(root, "valhalla_tiles");
+    const nestedTileDir = join(tileDir, "2", "001");
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(nestedTileDir, { recursive: true });
 
-    expect(recovery).toContain(
-      'rm -f "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"',
+    writeFileSync(
+      join(stateDir, "current-stage.log"),
+      "what(): Mismatch in end offset = 1358408 vs raw tile data size = 1064960. Tile file might me corrupted\n",
     );
-    expect(recovery).toContain(
-      'find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +',
-    );
-    expect(recovery).not.toContain('rm -f "$STATE_DIR/constructedges.complete"');
-    expect(script).toContain("run_stage build build build.complete");
-    expect(script).toContain("run_stage enhance cleanup cleanup.complete");
+    writeFileSync(join(stateDir, "constructedges.complete"), "");
+    writeFileSync(join(stateDir, "build.complete"), "");
+    writeFileSync(join(stateDir, "cleanup.complete"), "");
+    writeFileSync(join(tileDir, "ways.bin"), "ways");
+    writeFileSync(join(tileDir, "osmdata_counts.bin"), "counts");
+    writeFileSync(join(tileDir, "way_nodes.bin"), "nodes");
+    writeFileSync(join(nestedTileDir, "corrupted.gph"), "broken");
+
+    const harness = `set -euo pipefail\nSTATE_DIR="$1"\nVALHALLA_TILE_DIR_ABS="$2"\n${recoveryFunction()}\nrecover_corrupted_graph_tiles\n`;
+    execFileSync("bash", ["-c", harness, "bash", stateDir, root], {
+      stdio: "pipe",
+    });
+
+    expect(() => readFileSync(join(tileDir, "ways.bin"))).not.toThrow();
+    expect(() => readFileSync(join(tileDir, "osmdata_counts.bin"))).not.toThrow();
+    expect(() => readFileSync(join(tileDir, "way_nodes.bin"))).not.toThrow();
+    expect(() => readFileSync(join(stateDir, "constructedges.complete"))).not.toThrow();
+    expect(() => readFileSync(join(nestedTileDir, "corrupted.gph"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "cleanup.complete"))).toThrow();
   });
 
   it("performs at most one automatic recovery attempt per invocation", () => {

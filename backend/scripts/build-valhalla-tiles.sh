@@ -411,9 +411,10 @@ recover_corrupted_graph_tiles() {
 
   echo '{"event":"valhalla_corrupted_graph_tiles_detected","action":"rebuild_downstream","preservedStage":"constructedges"}' >&2
   rm -f "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"
-  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -delete
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -depth -type d -empty -delete
   mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
-  echo '{"event":"valhalla_corrupted_graph_tiles_cleared","retryFrom":"build"}' >&2
+  echo '{"event":"valhalla_corrupted_graph_tiles_cleared","retryFrom":"build","preservedIntermediates":true}' >&2
 }
 
 if [[ ! -f "$STATE_DIR/constructedges.complete" ]]; then
