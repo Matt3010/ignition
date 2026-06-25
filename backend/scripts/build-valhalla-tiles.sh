@@ -89,6 +89,15 @@ write_marker() {
   return 1
 }
 
+cleanup_core_dumps() {
+  local count
+  count="$(find "$VALHALLA_TILE_DIR_ABS" -maxdepth 1 -type f \( -name 'core' -o -name 'core.*' \) 2>/dev/null | wc -l | tr -d ' ')"
+  if (( count > 0 )); then
+    find "$VALHALLA_TILE_DIR_ABS" -maxdepth 1 -type f \( -name 'core' -o -name 'core.*' \) -delete 2>/dev/null || true
+    echo "{\"event\":\"valhalla_core_dumps_removed\",\"count\":$(json_number "$count")}"
+  fi
+}
+
 OSM_DATA_DIR_ABS="$(absolute_path "$OSM_DATA_DIR")"
 VALHALLA_TILE_DIR_ABS="$(absolute_path "$VALHALLA_TILE_DIR")"
 OSM_MOUNT_DIR_ABS="${OSM_HOST_DATA_DIR:-$OSM_DATA_DIR_ABS}"
@@ -124,6 +133,7 @@ done
 
 mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" "$STATE_DIR"
 chmod 0777 "$VALHALLA_TILE_DIR_ABS" "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+cleanup_core_dumps
 cp docker/valhalla/valhalla.json "$VALHALLA_TILE_DIR_ABS/valhalla.json"
 
 fingerprint_payload="$VALHALLA_DOCKER_IMAGE|$VALHALLA_DOCKER_PLATFORM|$(sha256sum docker/valhalla/valhalla.json | awk '{print $1}')|${input_metadata[*]}"
@@ -394,6 +404,7 @@ run_stage() {
   set -e
   stop_progress_monitor
   BUILD_CONTAINER_RUNNING=false
+  cleanup_core_dumps
   emit_warning_summary "$stage_log" "$start_stage" "$end_stage"
   if (( stage_status != 0 )); then
     echo "{\"event\":\"valhalla_build_stage_failed\",\"start\":\"$start_stage\",\"end\":\"$end_stage\",\"exitCode\":$stage_status}" >&2
@@ -458,6 +469,7 @@ if ! find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -print -
   exit 1
 fi
 validate_sqlite "$TIMEZONE_DB" || { echo "Valhalla build completed without a valid timezones.sqlite" >&2; exit 1; }
+cleanup_core_dumps
 has_admins=false
 if validate_sqlite "$ADMIN_DB" && [[ -f "$STATE_DIR/admins.complete" ]]; then
   has_admins=true

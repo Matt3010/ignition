@@ -44,4 +44,17 @@ describe("OSM refresh tile activation portability", () => {
     expect(script).not.toContain('rm -rf "$VALHALLA_PREVIOUS_TILE_DIR" "$VALHALLA_FAILED_TILE_DIR"');
   });
 
+  it("removes rollback and failed tile directories only after metadata validation succeeds", async () => {
+    const script = await readFile(scriptPath, "utf8");
+    const metadataFailure = script.indexOf("valhalla_metadata");
+    const previousCleanup = script.indexOf('remove_directory "$VALHALLA_PREVIOUS_TILE_DIR"');
+    const failedCleanup = script.indexOf('remove_directory "$VALHALLA_FAILED_TILE_DIR"');
+    const finished = script.indexOf("osm_refresh_finished");
+
+    expect(metadataFailure).toBeGreaterThanOrEqual(0);
+    expect(previousCleanup).toBeGreaterThan(metadataFailure);
+    expect(failedCleanup).toBeGreaterThan(previousCleanup);
+    expect(finished).toBeGreaterThan(failedCleanup);
+  });
+
 });

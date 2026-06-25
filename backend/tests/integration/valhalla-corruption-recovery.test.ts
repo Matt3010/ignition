@@ -28,7 +28,38 @@ function recoveryFunction(): string {
   return match[0];
 }
 
+function coreDumpCleanupFunction(): string {
+  const match = script.match(
+    /cleanup_core_dumps\(\) \{[\s\S]*?\n\}/,
+  );
+  if (!match) {
+    throw new Error("cleanup_core_dumps function not found");
+  }
+  return match[0];
+}
+
 describeWithBash("Valhalla graph-tile corruption recovery", () => {
+  it("removes Valhalla core dumps without touching graph data", () => {
+    const root = mkdtempSync(join(tmpdir(), "valhalla-core-dumps-"));
+    writeFileSync(join(root, "core"), "dump");
+    writeFileSync(join(root, "core.1"), "dump");
+    writeFileSync(join(root, "ways.bin"), "ways");
+
+    const harness = `set -euo pipefail
+VALHALLA_TILE_DIR_ABS="$1"
+json_number() { [[ "$1" =~ ^[0-9]+$ ]] && printf '%s' "$1" || printf '0'; }
+${coreDumpCleanupFunction()}
+cleanup_core_dumps
+`;
+    execFileSync("bash", ["-c", harness, "bash", bashPath(root)], {
+      stdio: "pipe",
+    });
+
+    expect(() => readFileSync(join(root, "core"))).toThrow();
+    expect(() => readFileSync(join(root, "core.1"))).toThrow();
+    expect(() => readFileSync(join(root, "ways.bin"))).not.toThrow();
+  });
+
   it("detects the Valhalla offset-mismatch corruption error", () => {
     expect(script).toContain("recover_corrupted_graph_tiles() {");
     expect(script).toContain("Mismatch in end offset =");
