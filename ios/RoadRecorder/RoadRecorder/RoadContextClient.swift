@@ -256,9 +256,6 @@ enum DriveEventFormatter {
         case "averageSpeedCamera": return "controllo velocita media"
         case "redLightCamera": return "photored"
         case "accessControl": return "controllo accesso/ZTL"
-        case "roadHazard": return "pericolo stradale"
-        case "roadWorks": return "lavori stradali"
-        case "roadClosure": return "strada chiusa"
         default: return type
         }
     }

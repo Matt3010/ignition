@@ -3,9 +3,6 @@ export const alertTypes = [
   "averageSpeedCamera",
   "redLightCamera",
   "accessControl",
-  "roadHazard",
-  "roadWorks",
-  "roadClosure",
 ] as const;
 
 export type AlertType = (typeof alertTypes)[number];

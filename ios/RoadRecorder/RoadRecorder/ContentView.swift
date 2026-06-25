@@ -590,20 +590,20 @@ private struct RecordingMapView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     legendItem(
-                        title: "Sul percorso",
+                        title: "Autovelox",
                         systemImage: "camera.fill",
-                        color: .orange,
-                        filled: true
+                        color: .red,
+                        style: .iconOnly
                     )
 
                     Divider()
                         .frame(height: 18)
 
                     legendItem(
-                        title: "Entro 10 km",
-                        systemImage: "exclamationmark.triangle.fill",
-                        color: .orange,
-                        filled: false
+                        title: "Accesso",
+                        systemImage: "lock.fill",
+                        color: .blue,
+                        style: .iconOnly
                     )
 
                     Image(systemName: isAlertLegendExpanded ? "chevron.down" : "chevron.up")
@@ -612,15 +612,26 @@ private struct RecordingMapView: View {
                 }
 
                 if isAlertLegendExpanded {
-                    VStack(alignment: .leading, spacing: 6) {
-                        legendItem(title: "Autovelox / photored", systemImage: "camera.fill", color: .red, filled: true)
-                        legendItem(title: "Lavori", systemImage: "wrench.and.screwdriver.fill", color: .orange, filled: true)
-                        legendItem(title: "Chiusura", systemImage: "nosign", color: .orange, filled: true)
-                        legendItem(title: "Pericolo stradale", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: true)
-                        legendItem(title: "Accesso controllato", systemImage: "lock.fill", color: .blue, filled: true)
-                        legendItem(title: "Non operativo", systemImage: "exclamationmark.triangle.fill", color: .gray, filled: true)
-                        legendItem(title: "Posizione precisa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false)
-                        legendItem(title: "Posizione approssimativa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false, dashed: true)
+                    VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Icona")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            legendItem(title: "Autovelox, tutor, photored", systemImage: "camera.fill", color: .red, style: .iconOnly)
+                            legendItem(title: "Accesso controllato / ZTL", systemImage: "lock.fill", color: .blue, style: .iconOnly)
+                        }
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Cerchio")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            legendItem(title: "Pieno: sul percorso", systemImage: "camera.fill", color: .red, style: .filled)
+                            legendItem(title: "Vuoto: entro 10 km", systemImage: "camera.fill", color: .red, style: .outline)
+                            legendItem(title: "Bordo continuo: posizione precisa", systemImage: "camera.fill", color: .red, style: .outline)
+                            legendItem(title: "Bordo tratteggiato: posizione approssimativa", systemImage: "camera.fill", color: .red, style: .dashedOutline)
+                            legendItem(title: "Grigio: non operativo", systemImage: "camera.fill", color: .gray, style: .filled)
+                        }
+
                         if hiddenMapAlertCount > 0 {
                             Text("Mostrati \(visibleMapAlerts.count) di \(recorder.mapAlerts.count) alert")
                                 .font(.caption2)
@@ -642,24 +653,35 @@ private struct RecordingMapView: View {
         .accessibilityLabel("Legenda alert. Tocca per \(isAlertLegendExpanded ? "ridurre" : "espandere")")
     }
 
-    private func legendItem(title: String, systemImage: String, color: Color, filled: Bool, dashed: Bool = false) -> some View {
+    private enum LegendMarkerStyle: Equatable {
+        case iconOnly
+        case filled
+        case outline
+        case dashedOutline
+    }
+
+    private func legendItem(title: String, systemImage: String, color: Color, style: LegendMarkerStyle) -> some View {
         HStack(spacing: 5) {
             Image(systemName: systemImage)
                 .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(filled ? Color.white : color)
+                .foregroundStyle(style == .filled ? Color.white : color)
                 .frame(width: 18, height: 18)
                 .background {
-                    Circle().fill(filled ? color : Color.clear)
+                    if style != .iconOnly {
+                        Circle().fill(style == .filled ? color : Color.clear)
+                    }
                 }
                 .overlay {
-                    Circle().stroke(
-                        filled ? Color.white : color,
-                        style: StrokeStyle(lineWidth: 1.25, dash: dashed ? [3, 2] : [])
-                    )
+                    if style != .iconOnly {
+                        Circle().stroke(
+                            style == .filled ? Color.white : color,
+                            style: StrokeStyle(lineWidth: 1.25, dash: style == .dashedOutline ? [3, 2] : [])
+                        )
+                    }
                 }
 
             Text(title)
-                .lineLimit(1)
+                .lineLimit(2)
         }
     }
 
@@ -710,7 +732,6 @@ private struct RecordingMapView: View {
         if alert.operationalStatus == "notOperational" || alert.active == false { return .gray }
         switch alert.type {
         case "fixedSpeedCamera", "averageSpeedCamera", "redLightCamera": return .red
-        case "roadWorks", "roadClosure": return .orange
         case "accessControl": return .blue
         default: return .orange
         }
@@ -754,9 +775,6 @@ private struct RecordingMapView: View {
     private func symbolName(for type: String) -> String {
         switch type {
         case "speed_camera", "speedCamera", "fixedSpeedCamera", "averageSpeedCamera", "redLightCamera": return "camera.fill"
-        case "road_works", "roadWorks": return "wrench.and.screwdriver.fill"
-        case "roadClosure": return "nosign"
-        case "roadHazard": return "exclamationmark.triangle.fill"
         case "accessControl": return "lock.fill"
         default: return "exclamationmark.triangle.fill"
         }

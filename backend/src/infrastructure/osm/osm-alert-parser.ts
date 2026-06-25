@@ -182,50 +182,6 @@ function alertFromElement(
       attributes,
     });
   }
-  if (isRoadWorks(effectiveTags)) {
-    return buildAlert({
-      osmType,
-      osmId,
-      type: "roadWorks",
-      latitude,
-      longitude,
-      tags,
-      effectiveTags,
-      source,
-      roadId,
-      confidence: calculateOsmConfidence(tags, {
-        hasRoad: roadId !== null,
-        hasBearing: parseBearing(tags) !== null,
-        relation: false,
-        attributes,
-        base: 0.75,
-      }),
-      positionApproximate: osmType === "way",
-      attributes,
-    });
-  }
-  if (isRoadHazard(effectiveTags)) {
-    return buildAlert({
-      osmType,
-      osmId,
-      type: "roadHazard",
-      latitude,
-      longitude,
-      tags,
-      effectiveTags,
-      source,
-      roadId,
-      confidence: calculateOsmConfidence(tags, {
-        hasRoad: roadId !== null,
-        hasBearing: parseBearing(tags) !== null,
-        relation: false,
-        attributes,
-        base: 0.72,
-      }),
-      positionApproximate: osmType === "way",
-      attributes,
-    });
-  }
   return null;
 }
 
@@ -611,23 +567,6 @@ function parseEnforcementCapabilities(value: string | undefined): string[] {
 function selectPrimaryCapability(capabilities: string[]): string {
   const priority = ["average_speed", "maxspeed", "traffic_signals", "access", "maxweight", "weigh_station"];
   return priority.find((capability) => capabilities.includes(capability)) ?? capabilities[0];
-}
-
-function isRoadWorks(tags: Record<string, string>): boolean {
-  if (tags.highway === "construction" || tags.highway === "roadworks") return true;
-  if (["yes", "true", "1"].includes(tags.roadworks?.toLowerCase() ?? "")) return true;
-  return Boolean(tags.highway && tags.construction && isRoadHighway(tags.highway));
-}
-
-function isRoadHighway(value: string): boolean {
-  return ![
-    "construction", "roadworks", "speed_camera", "street_lamp", "bus_stop",
-    "crossing", "traffic_signals", "give_way", "stop", "elevator",
-  ].includes(value);
-}
-
-function isRoadHazard(tags: Record<string, string>): boolean {
-  return Boolean(tags.hazard) || Boolean(tags["hazard:conditional"]) || tags.highway === "hazard";
 }
 
 function parseDirection(value: string | undefined): Direction {

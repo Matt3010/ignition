@@ -74,20 +74,20 @@ describeLive("production dependency graph end to end", () => {
       {
         ...baseAlert,
         id: randomUUID(),
-        type: "roadWorks",
-        subtype: "construction",
-        capabilities: ["roadworks"],
-        primaryCapability: "roadworks",
+        type: "accessControl",
+        subtype: "access",
+        capabilities: ["access"],
+        primaryCapability: "access",
         longitude: 7.42518,
         speedLimitKmh: null,
       },
       {
         ...baseAlert,
         id: randomUUID(),
-        type: "roadHazard",
-        subtype: "hazard",
-        capabilities: ["hazard"],
-        primaryCapability: "hazard",
+        type: "averageSpeedCamera",
+        subtype: "average",
+        capabilities: ["average_speed"],
+        primaryCapability: "average_speed",
         longitude: 7.42528,
         speedLimitKmh: null,
       },
@@ -185,26 +185,26 @@ describeLive("production dependency graph end to end", () => {
       expect(testedAlerts.map((item) => item.type)).toEqual([
         "fixedSpeedCamera",
         "redLightCamera",
-        "roadWorks",
-        "roadHazard",
+        "accessControl",
+        "averageSpeedCamera",
       ]);
       expect(testedAlerts.map((item) => item.subtype)).toEqual([
         "fixed",
         "red_light",
-        "construction",
-        "hazard",
+        "access",
+        "average",
       ]);
       expect(testedAlerts.map((item) => item.primaryCapability)).toEqual([
         "maxspeed",
         "trafficSignals",
-        "roadworks",
-        "hazard",
+        "access",
+        "average_speed",
       ]);
       expect(testedAlerts.map((item) => item.capabilities)).toEqual([
         ["maxspeed"],
         ["trafficSignals"],
-        ["roadworks"],
-        ["hazard"],
+        ["access"],
+        ["average_speed"],
       ]);
       expect(testedAlerts[0]?.speedLimitKmh).toBe(50);
       expect(testedAlerts.slice(1).every((item) => item.speedLimitKmh === null)).toBe(true);

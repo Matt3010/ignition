@@ -43,11 +43,9 @@ describe("OSM alert parser", () => {
       maxLongitude: 11.01,
     });
     expect(result.elementsScanned).toBe(8);
-    expect(result.alerts).toHaveLength(4);
+    expect(result.alerts).toHaveLength(2);
     expect(result.alerts.map((alert) => alert.type)).toEqual([
       "fixedSpeedCamera",
-      "roadHazard",
-      "roadWorks",
       "fixedSpeedCamera",
     ]);
     expect(result.alerts[0]).toMatchObject({
@@ -59,21 +57,14 @@ describe("OSM alert parser", () => {
       bearing: 90,
       source: "osm",
     });
-    expect(result.alerts[2].latitude).toBeCloseTo(45.002);
-    expect(result.alerts[2].longitude).toBeCloseTo(11.002);
-    expect(result.alerts[2]).toMatchObject({
-      roadId: "way-10",
-      speedLimitKmh: 48,
-      speedLimitSource: "explicit",
-    });
-    expect(result.alerts[3]).toMatchObject({
+    expect(result.alerts[1]).toMatchObject({
       type: "fixedSpeedCamera",
       latitude: 45.0002,
       longitude: 11.0002,
       speedLimitKmh: 70,
       direction: "forward",
     });
-    expect(result.alerts[3].bearing).toBeCloseTo(0);
+    expect(result.alerts[1].bearing).toBeCloseTo(0);
   });
 
   it("keeps directional OSM enforcement relations and the source device node", () => {

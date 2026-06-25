@@ -9,6 +9,9 @@ const removedAlertTypes = [
   "weightControl",
   "genericEnforcement",
   "policeControl",
+  "roadHazard",
+  "roadWorks",
+  "roadClosure",
 ] as const;
 
 describe("alert types", () => {
@@ -19,18 +22,29 @@ describe("alert types", () => {
   });
 
   it("prunes removed alert types at the database constraint", () => {
-    const migration = readFileSync(
+    const firstPruneMigration = readFileSync(
       resolve(process.cwd(), "migrations/0010_prune_static_alert_types.sql"),
       "utf8",
     );
+    const latestPruneMigration = readFileSync(
+      resolve(process.cwd(), "migrations/0012_prune_road_closure.sql"),
+      "utf8",
+    );
+    const secondPruneMigration = readFileSync(
+      resolve(process.cwd(), "migrations/0011_prune_road_hazard_and_works.sql"),
+      "utf8",
+    );
+    const pruningMigrations = `${firstPruneMigration}\n${secondPruneMigration}\n${latestPruneMigration}`;
 
     for (const type of removedAlertTypes) {
-      expect(migration).toContain(`'${type}'`);
+      expect(pruningMigrations).toContain(`'${type}'`);
     }
-    expect(migration).toContain("delete from road_alerts");
-    expect(migration).toContain("road_alerts_type_check");
+    expect(pruningMigrations).toContain("delete from road_alerts");
+    expect(latestPruneMigration).toContain("road_alerts_type_check");
 
-    const constraintDefinition = migration.slice(migration.indexOf("add constraint road_alerts_type_check"));
+    const constraintDefinition = latestPruneMigration.slice(
+      latestPruneMigration.indexOf("add constraint road_alerts_type_check"),
+    );
     for (const type of removedAlertTypes) {
       expect(constraintDefinition).not.toContain(`'${type}'`);
     }

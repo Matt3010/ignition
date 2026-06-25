@@ -32,11 +32,11 @@ describe("OSM alert status and classification", () => {
       <node id="8" lat="45.007" lon="11.007"><tag k="demolished:highway" v="roadworks"/></node>
     </osm>`;
     const alerts = parseOsmAlerts(xml).alerts;
-    expect(alerts).toHaveLength(3);
+    expect(alerts).toHaveLength(2);
     expect(alerts[0]).toMatchObject({ type: "fixedSpeedCamera", operationalStatus: "notOperational", statusReason: "removed:highway=speed_camera", speedLimitKmh: 70 });
     expect(alerts[0].sourceTags).toEqual({ "removed:highway": "speed_camera", "removed:maxspeed": "70" });
     expect(alerts[1]).toMatchObject({ type: "redLightCamera", operationalStatus: "notOperational", statusReason: "disused:enforcement=traffic_signals" });
-    expect(alerts[2]).toMatchObject({ type: "roadWorks", operationalStatus: "notOperational", statusReason: "demolished:highway=roadworks" });
+    expect(alerts.map((alert) => alert.type)).not.toContain("roadWorks");
   });
 
   it("classifies standalone traffic_signals=red_light_camera tags", () => {
