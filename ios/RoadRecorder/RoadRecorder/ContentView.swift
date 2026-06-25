@@ -621,6 +621,7 @@ private struct RecordingMapView: View {
                         legendItem(title: "Accesso controllato", systemImage: "lock.fill", color: .blue, filled: true)
                         legendItem(title: "Controllo peso", systemImage: "scalemass.fill", color: .blue, filled: true)
                         legendItem(title: "Non operativo", systemImage: "exclamationmark.triangle.fill", color: .gray, filled: true)
+                        legendItem(title: "Posizione precisa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false)
                         legendItem(title: "Posizione approssimativa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false, dashed: true)
                         if hiddenMapAlertCount > 0 {
                             Text("Mostrati \(visibleMapAlerts.count) di \(recorder.mapAlerts.count) alert")
