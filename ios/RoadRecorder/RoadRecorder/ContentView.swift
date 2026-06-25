@@ -59,7 +59,9 @@ struct ContentView: View {
                             cameraPosition: $mapCameraPosition,
                             hasCenteredInitially: $hasCenteredMapInitially,
                             showsAlertLegend: false,
-                            onToggleFullScreen: { isMapFullScreen = true }
+                            mapActionSystemImage: "arrow.up.left.and.arrow.down.right",
+                            mapActionAccessibilityLabel: "Apri mappa a schermo intero",
+                            onMapAction: { isMapFullScreen = true }
                         )
                             .frame(height: 300)
                             .listRowInsets(EdgeInsets())
@@ -327,23 +329,15 @@ private struct FullScreenRecordingMapView: View {
     let onClose: () -> Void
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             RecordingMapView(
                 cameraPosition: $cameraPosition,
                 hasCenteredInitially: $hasCenteredInitially,
                 showsAlertLegend: true,
-                onToggleFullScreen: nil
+                mapActionSystemImage: "xmark",
+                mapActionAccessibilityLabel: "Chiudi mappa a schermo intero",
+                onMapAction: onClose
             )
-
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.headline.weight(.bold))
-                    .padding(12)
-                    .background(.regularMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Chiudi mappa a schermo intero")
-            .padding()
         }
     }
 }
@@ -355,7 +349,9 @@ private struct RecordingMapView: View {
     @Binding var hasCenteredInitially: Bool
     @State private var isAlertLegendExpanded = false
     let showsAlertLegend: Bool
-    let onToggleFullScreen: (() -> Void)?
+    let mapActionSystemImage: String
+    let mapActionAccessibilityLabel: String
+    let onMapAction: () -> Void
     private let maxGenericAlertAnnotations = 160
 
     var body: some View {
@@ -484,16 +480,14 @@ private struct RecordingMapView: View {
                         .opacity(recorder.currentCoordinate == nil ? 0.45 : 1)
                         .accessibilityLabel("Centra sulla posizione corrente")
 
-                        if let onToggleFullScreen {
-                            Button(action: onToggleFullScreen) {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.headline.weight(.semibold))
-                                    .padding(12)
-                                    .background(.regularMaterial, in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Apri mappa a schermo intero")
+                        Button(action: onMapAction) {
+                            Image(systemName: mapActionSystemImage)
+                                .font(.headline.weight(.semibold))
+                                .padding(12)
+                                .background(.regularMaterial, in: Circle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(mapActionAccessibilityLabel)
                     }
                 }
                 .padding(12)
