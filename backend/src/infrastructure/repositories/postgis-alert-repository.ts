@@ -73,6 +73,22 @@ export class PostgisAlertRepository implements AlertRepository {
     }));
   }
 
+  async hasAvailableAlerts(): Promise<boolean> {
+    const result = await this.pool.query(
+      `
+      select exists(
+        select 1
+        from road_alerts
+        where active = true
+          and osm_presence_status = 'present'
+          and (valid_from is null or valid_from <= now())
+          and (valid_until is null or valid_until >= now())
+      ) as available
+      `,
+    );
+    return result.rows[0]?.available === true;
+  }
+
   async upsertMany(alerts: RoadAlert[]): Promise<number> {
     if (!alerts.length) return 0;
     const client = await this.pool.connect();

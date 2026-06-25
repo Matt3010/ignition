@@ -38,6 +38,7 @@ struct RoadContextSample: Codable {
 struct RoadContextResponse: Codable {
     let matched: Bool
     let matchStatus: String?
+    let alertsStatus: String?
     let roadId: String?
     let roadName: String?
     let speedLimitKmh: Int?

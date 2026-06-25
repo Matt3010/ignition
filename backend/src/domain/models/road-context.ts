@@ -57,6 +57,7 @@ export interface RoadContextResponse extends Omit<
   "distanceFromTraceMeters" | "bearing" | "valhallaQuality" | "unmatchedReason"
 > {
   matchStatus: PublicMatchStatus;
+  alertsStatus: "available" | "unavailable";
   alerts: Array<{
     id: string;
     type: AlertCandidate["type"];

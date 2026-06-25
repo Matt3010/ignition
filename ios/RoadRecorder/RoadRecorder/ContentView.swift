@@ -208,8 +208,14 @@ private struct EventRow: View {
                     EventDetailLine(icon: "speedometer", text: limitCheckText(response))
                         .foregroundStyle(limitCheckColor(response))
                     EventDetailLine(icon: "clock", text: "campione GPS: \(response.dataTimestamp)")
+                    EventDetailLine(
+                        icon: response.alertsStatus == "unavailable" ? "exclamationmark.triangle" : "checkmark.circle",
+                        text: response.alertsStatus == "unavailable" ? "alert: non disponibili" : "alert: disponibili"
+                    )
 
-                    if response.alerts.isEmpty {
+                    if response.alertsStatus == "unavailable" {
+                        EmptyView()
+                    } else if response.alerts.isEmpty {
                         EventDetailLine(icon: "camera", text: "alert: nessuno")
                     } else {
                         ForEach(response.alerts, id: \.id) { alert in
@@ -492,7 +498,11 @@ private struct RecordingMapView: View {
                 Text("\(Int(recorder.currentSpeedKmh.rounded())) km/h · GPS \(accuracyText)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                if let alert = nearestAlert {
+                if recorder.currentRoadContext?.alertsStatus == "unavailable" {
+                    Label("Alert non disponibili", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.red)
+                } else if let alert = nearestAlert {
                     Label("\(DriveEventFormatter.alertTypeText(alert.type)) · \(Int(alert.distanceMeters.rounded())) m", systemImage: symbolName(for: alert.type))
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.orange)
