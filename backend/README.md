@@ -304,6 +304,7 @@ Vedere `.env.example`. Le più importanti (il provider reale, host del container
 - `VALHALLA_BASE_URL`
 - `VALHALLA_TIMEOUT_MS`
 - `ALERT_SEARCH_RADIUS_METERS`
+- `GENERIC_ALERT_SEARCH_RADIUS_METERS` (default `10000`, used for unfiltered map markers)
 - `ALERT_BEHIND_MIN_ANGLE_DEGREES`
 - `ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES`
 - `ALERT_BEHIND_MIN_SPEED_KMH`

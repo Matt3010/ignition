@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { alertTypes } from "../../domain/models/alert.js";
 
-const isoDateSchema = z.string().datetime({ offset: true }).refine((value) => !Number.isNaN(Date.parse(value)), "timestamp must be ISO 8601");
+const isoDateSchema = z
+  .string()
+  .datetime({ offset: true })
+  .refine((value) => !Number.isNaN(Date.parse(value)), "timestamp must be ISO 8601");
 
 export const roadContextRequestSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -11,6 +14,31 @@ export const roadContextRequestSchema = z.object({
   horizontalAccuracyMeters: z.number().positive(),
   timestamp: isoDateSchema,
   sessionId: z.string().uuid(),
+});
+
+const roadAlertResponseSchema = z.object({
+  id: z.string(),
+  type: z.enum(alertTypes),
+  subtype: z.string().nullable(),
+  capabilities: z.array(z.string()),
+  primaryCapability: z.string().nullable(),
+  distanceMeters: z.number().min(0),
+  speedLimitKmh: z.number().int().positive().nullable(),
+  speedLimitSource: z.enum(["explicit", "implicit", "unknown"]),
+  latitude: z.number(),
+  longitude: z.number(),
+  direction: z.enum(["forward", "backward", "unknown"]),
+  confidence: z.number().min(0).max(1),
+  operationalStatus: z.enum(["operational", "notOperational", "unknown"]),
+  statusReason: z.string().nullable(),
+  directionBearings: z.array(z.number().min(0).lt(360)),
+  osmPresenceStatus: z.enum(["present", "missingFromLatestImport"]),
+  active: z.boolean(),
+  positionApproximate: z.boolean(),
+  osmType: z.string().nullable(),
+  osmId: z.string().nullable(),
+  osmRelationId: z.string().nullable(),
+  osmTimestamp: z.string().datetime({ offset: true }).nullable(),
 });
 
 export const roadContextResponseSchema = z.object({
@@ -24,30 +52,8 @@ export const roadContextResponseSchema = z.object({
   confidence: z.number().min(0).max(1),
   direction: z.enum(["forward", "backward", "unknown"]),
   dataTimestamp: z.string().datetime({ offset: true }),
-  alerts: z.array(z.object({
-    id: z.string(),
-    type: z.enum(alertTypes),
-    subtype: z.string().nullable(),
-    capabilities: z.array(z.string()),
-    primaryCapability: z.string().nullable(),
-    distanceMeters: z.number().min(0),
-    speedLimitKmh: z.number().int().positive().nullable(),
-    speedLimitSource: z.enum(["explicit", "implicit", "unknown"]),
-    latitude: z.number(),
-    longitude: z.number(),
-    direction: z.enum(["forward", "backward", "unknown"]),
-    confidence: z.number().min(0).max(1),
-    operationalStatus: z.enum(["operational", "notOperational", "unknown"]),
-    statusReason: z.string().nullable(),
-    directionBearings: z.array(z.number().min(0).lt(360)),
-    osmPresenceStatus: z.enum(["present", "missingFromLatestImport"]),
-    active: z.boolean(),
-    positionApproximate: z.boolean(),
-    osmType: z.string().nullable(),
-    osmId: z.string().nullable(),
-    osmRelationId: z.string().nullable(),
-    osmTimestamp: z.string().datetime({ offset: true }).nullable(),
-  })),
+  alerts: z.array(roadAlertResponseSchema),
+  genericAlerts: z.array(roadAlertResponseSchema),
 });
 
 export type RoadContextRequest = z.infer<typeof roadContextRequestSchema>;

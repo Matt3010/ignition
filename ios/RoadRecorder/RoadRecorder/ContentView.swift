@@ -4,6 +4,9 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var recorder: LocationRecorder
     @FocusState private var backendFocused: Bool
+    @State private var isMapFullScreen = false
+    @State private var mapCameraPosition: MapCameraPosition = .automatic
+    @State private var hasCenteredMapInitially = false
 
     var body: some View {
         NavigationStack {
@@ -52,9 +55,16 @@ struct ContentView: View {
 
                 if recorder.isRecording || !recorder.routeCoordinates.isEmpty {
                     Section("Mappa registrazione") {
-                        RecordingMapView()
+                        RecordingMapView(
+                            cameraPosition: $mapCameraPosition,
+                            hasCenteredInitially: $hasCenteredMapInitially,
+                            showsAlertLegend: false,
+                            onToggleFullScreen: { isMapFullScreen = true }
+                        )
                             .frame(height: 300)
                             .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
                 }
 
@@ -91,6 +101,14 @@ struct ContentView: View {
                         .accessibilityLabel(recorder.isRecording ? "Recording" : "Stopped")
                 }
             }
+        }
+        .fullScreenCover(isPresented: $isMapFullScreen) {
+            FullScreenRecordingMapView(
+                cameraPosition: $mapCameraPosition,
+                hasCenteredInitially: $hasCenteredMapInitially,
+                onClose: { isMapFullScreen = false }
+            )
+            .environmentObject(recorder)
         }
     }
 }
@@ -297,9 +315,41 @@ private struct EventAlertLine: View {
 }
 
 
+private struct FullScreenRecordingMapView: View {
+    @Binding var cameraPosition: MapCameraPosition
+    @Binding var hasCenteredInitially: Bool
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            RecordingMapView(
+                cameraPosition: $cameraPosition,
+                hasCenteredInitially: $hasCenteredInitially,
+                showsAlertLegend: true,
+                onToggleFullScreen: nil
+            )
+            .ignoresSafeArea()
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.bold))
+                    .padding(12)
+                    .background(.regularMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Chiudi mappa a schermo intero")
+            .padding()
+        }
+    }
+}
+
+
 private struct RecordingMapView: View {
     @EnvironmentObject private var recorder: LocationRecorder
-    @State private var cameraPosition: MapCameraPosition = .automatic
+    @Binding var cameraPosition: MapCameraPosition
+    @Binding var hasCenteredInitially: Bool
+    let showsAlertLegend: Bool
+    let onToggleFullScreen: (() -> Void)?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -312,9 +362,9 @@ private struct RecordingMapView: View {
                         .stroke(.blue.opacity(0.45), lineWidth: 1)
                 }
 
-                ForEach(routeSegments) { segment in
-                    MapPolyline(coordinates: [segment.start.coordinate, segment.end.coordinate])
-                        .stroke(traceColor(for: segment.end), lineWidth: 5)
+                if smoothedRouteCoordinates.count >= 2 {
+                    MapPolyline(coordinates: smoothedRouteCoordinates)
+                        .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
                 }
 
                 ForEach(recorder.speedViolationPoints) { violation in
@@ -338,26 +388,42 @@ private struct RecordingMapView: View {
                 }
 
                 ForEach(recorder.mapAlerts, id: \.id) { alert in
+                    let isPriority = priorityAlertIDs.contains(alert.id)
                     Annotation(
                         DriveEventFormatter.alertTypeText(alert.type),
                         coordinate: CLLocationCoordinate2D(latitude: alert.latitude, longitude: alert.longitude)
                     ) {
                         VStack(spacing: 2) {
                             Image(systemName: symbolName(for: alert.type))
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(7)
-                                .background(alertColor(alert), in: Circle())
-                                .overlay(Circle().stroke(.white, style: StrokeStyle(lineWidth: 2, dash: alert.positionApproximate == true ? [3, 2] : [])))
-                                .shadow(radius: 2)
+                                .font(isPriority ? .caption.weight(.bold) : .caption2.weight(.semibold))
+                                .foregroundStyle(isPriority ? Color.white : alertColor(alert))
+                                .padding(isPriority ? 8 : 6)
+                                .background {
+                                    if isPriority {
+                                        Circle().fill(alertColor(alert))
+                                    } else {
+                                        Circle().fill(.regularMaterial)
+                                    }
+                                }
+                                .overlay {
+                                    Circle().stroke(
+                                        isPriority ? Color.white : alertColor(alert),
+                                        style: StrokeStyle(
+                                            lineWidth: isPriority ? 2.5 : 1.5,
+                                            dash: alert.positionApproximate == true ? [3, 2] : []
+                                        )
+                                    )
+                                }
+                                .shadow(radius: isPriority ? 3 : 1)
 
-                            Text("\(Int(alert.distanceMeters.rounded())) m")
-                                .font(.caption2.weight(.semibold))
+                            Text(distanceText(alert.distanceMeters))
+                                .font(.caption2.weight(isPriority ? .bold : .medium))
+                                .foregroundStyle(isPriority ? Color.primary : Color.secondary)
                                 .padding(.horizontal, 4)
                                 .background(.regularMaterial, in: Capsule())
                         }
-                        .opacity(alertOpacity(alert))
-                        .accessibilityLabel(alertAccessibilityLabel(alert))
+                        .opacity(isPriority ? alertOpacity(alert) : min(alertOpacity(alert), 0.72))
+                        .accessibilityLabel(alertAccessibilityLabel(alert, isPriority: isPriority))
                     }
                 }
 
@@ -382,12 +448,39 @@ private struct RecordingMapView: View {
 
             mapStatusOverlay
                 .padding(8)
+
+            if showsAlertLegend {
+                VStack {
+                    Spacer()
+                    HStack {
+                        alertLegend
+                        Spacer()
+                    }
+                    .padding(16)
+                }
+                .allowsHitTesting(false)
+            }
+
+            if let onToggleFullScreen {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: onToggleFullScreen) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.headline.weight(.semibold))
+                                .padding(12)
+                                .background(.regularMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Apri mappa a schermo intero")
+                        .padding(12)
+                    }
+                }
+            }
         }
-        .onAppear(perform: centerOnCurrentPosition)
-        .onChange(of: coordinateKey) { _, _ in centerOnCurrentPosition() }
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal)
-        .padding(.vertical, 6)
+        .onAppear(perform: centerOnCurrentPositionOnce)
+        .onChange(of: coordinateKey) { _, _ in centerOnCurrentPositionOnce() }
     }
 
     private var mapStatusOverlay: some View {
@@ -442,21 +535,85 @@ private struct RecordingMapView: View {
         recorder.currentRoadContext?.alerts.min { $0.distanceMeters < $1.distanceMeters }
     }
 
-    private struct RouteSegment: Identifiable {
-        let start: RecordedRoutePoint
-        let end: RecordedRoutePoint
-        var id: UUID { end.id }
+    private var priorityAlertIDs: Set<String> {
+        Set(recorder.currentRoadContext?.alerts.map(\.id) ?? [])
     }
 
-    private var routeSegments: [RouteSegment] {
-        guard recorder.routePoints.count >= 2 else { return [] }
-        return zip(recorder.routePoints, recorder.routePoints.dropFirst()).map { RouteSegment(start: $0.0, end: $0.1) }
+    private var alertLegend: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Legenda alert")
+                .font(.caption.weight(.semibold))
+
+            Label {
+                Text("Prioritario sul percorso")
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(.orange, in: Circle())
+                    .overlay(Circle().stroke(.white, lineWidth: 1.5))
+            }
+
+            Label {
+                Text("Generico entro 10 km")
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .padding(4)
+                    .background(.regularMaterial, in: Circle())
+                    .overlay(Circle().stroke(.orange, lineWidth: 1.25))
+            }
+        }
+        .font(.caption2)
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .shadow(radius: 2)
+        .accessibilityElement(children: .combine)
     }
 
-    private func traceColor(for point: RecordedRoutePoint) -> Color {
-        guard let limit = point.speedLimitKmh, limit > 0 else { return .green }
-        let ratio = min(max(point.speedKmh / Double(limit), 0), 1)
-        return Color(hue: (1 - ratio) * 0.33, saturation: 0.9, brightness: 0.9)
+    private var smoothedRouteCoordinates: [CLLocationCoordinate2D] {
+        smooth(recorder.routeCoordinates, iterations: 2)
+    }
+
+    /// Chaikin corner cutting keeps the trace connected while rounding GPS
+    /// corners without making the map camera follow every incoming sample.
+    private func smooth(
+        _ coordinates: [CLLocationCoordinate2D],
+        iterations: Int
+    ) -> [CLLocationCoordinate2D] {
+        guard coordinates.count >= 3, iterations > 0 else { return coordinates }
+
+        var result = coordinates
+        for _ in 0..<iterations {
+            guard let first = result.first, let last = result.last else { return result }
+            var next: [CLLocationCoordinate2D] = []
+            next.reserveCapacity(result.count * 2)
+            next.append(first)
+
+            for index in 0..<(result.count - 1) {
+                let start = result[index]
+                let end = result[index + 1]
+                next.append(interpolate(from: start, to: end, progress: 0.25))
+                next.append(interpolate(from: start, to: end, progress: 0.75))
+            }
+
+            next.append(last)
+            result = next
+        }
+        return result
+    }
+
+    private func interpolate(
+        from start: CLLocationCoordinate2D,
+        to end: CLLocationCoordinate2D,
+        progress: Double
+    ) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(
+            latitude: start.latitude + ((end.latitude - start.latitude) * progress),
+            longitude: start.longitude + ((end.longitude - start.longitude) * progress)
+        )
     }
 
     private func alertColor(_ alert: RoadAlert) -> Color {
@@ -474,9 +631,17 @@ private struct RecordingMapView: View {
         return max(0.5, min(alert.confidence, 1))
     }
 
-    private func alertAccessibilityLabel(_ alert: RoadAlert) -> String {
+    private func alertAccessibilityLabel(_ alert: RoadAlert, isPriority: Bool) -> String {
+        let category = isPriority ? "alert prioritario sul percorso" : "alert generico entro dieci chilometri"
         let precision = alert.positionApproximate == true ? "posizione approssimativa" : "posizione precisa"
-        return "\(DriveEventFormatter.alertTypeText(alert.type)), distanza \(Int(alert.distanceMeters.rounded())) metri, confidenza \(Int((alert.confidence * 100).rounded())) percento, \(precision)"
+        return "\(category), \(DriveEventFormatter.alertTypeText(alert.type)), distanza \(Int(alert.distanceMeters.rounded())) metri, confidenza \(Int((alert.confidence * 100).rounded())) percento, \(precision)"
+    }
+
+    private func distanceText(_ meters: Double) -> String {
+        if meters >= 1_000 {
+            return String(format: "%.1f km", meters / 1_000)
+        }
+        return "\(Int(meters.rounded())) m"
     }
 
     private var coordinateKey: String {
@@ -484,9 +649,16 @@ private struct RecordingMapView: View {
         return "\(coordinate.latitude),\(coordinate.longitude)"
     }
 
-    private func centerOnCurrentPosition() {
-        guard let coordinate = recorder.currentCoordinate else { return }
-        cameraPosition = .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: 1_500, longitudinalMeters: 1_500))
+    private func centerOnCurrentPositionOnce() {
+        guard !hasCenteredInitially, let coordinate = recorder.currentCoordinate else { return }
+        hasCenteredInitially = true
+        cameraPosition = .region(
+            MKCoordinateRegion(
+                center: coordinate,
+                latitudinalMeters: 1_500,
+                longitudinalMeters: 1_500
+            )
+        )
     }
 
     private func symbolName(for type: String) -> String {

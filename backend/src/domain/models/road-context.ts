@@ -1,4 +1,10 @@
-import type { AlertCandidate, Direction, OperationalStatus, OsmPresenceStatus, SpeedLimitSource } from "./alert.js";
+import type {
+  AlertCandidate,
+  Direction,
+  OperationalStatus,
+  OsmPresenceStatus,
+  SpeedLimitSource,
+} from "./alert.js";
 
 export interface GpsSample {
   latitude: number;
@@ -46,9 +52,36 @@ export interface UnmatchedRoad {
 
 export type RoadMatch = MatchedRoad | UnmatchedRoad;
 
-export interface RoadContextResponse extends Omit<RoadMatch, "distanceFromTraceMeters" | "bearing" | "valhallaQuality" | "unmatchedReason"> {
+export interface RoadContextResponse extends Omit<
+  RoadMatch,
+  "distanceFromTraceMeters" | "bearing" | "valhallaQuality" | "unmatchedReason"
+> {
   matchStatus: PublicMatchStatus;
   alerts: Array<{
+    id: string;
+    type: AlertCandidate["type"];
+    subtype: string | null;
+    capabilities: string[];
+    primaryCapability: string | null;
+    distanceMeters: number;
+    speedLimitKmh: number | null;
+    speedLimitSource: SpeedLimitSource;
+    latitude: number;
+    longitude: number;
+    direction: Direction;
+    confidence: number;
+    operationalStatus: OperationalStatus;
+    statusReason: string | null;
+    directionBearings: number[];
+    osmPresenceStatus: OsmPresenceStatus;
+    active: boolean;
+    positionApproximate: boolean;
+    osmType: string | null;
+    osmId: string | null;
+    osmRelationId: string | null;
+    osmTimestamp: string | null;
+  }>;
+  genericAlerts: Array<{
     id: string;
     type: AlertCandidate["type"];
     subtype: string | null;

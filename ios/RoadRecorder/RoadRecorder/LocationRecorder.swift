@@ -365,11 +365,10 @@ final class LocationRecorder: NSObject, ObservableObject {
     private func updateMapAlerts(from response: RoadContextResponse?) {
         guard let response else { return }
 
-        // The backend response is the authoritative set of nearby alerts for
-        // the current sample. Rebuild the dictionary so alerts that have been
-        // passed or are no longer relevant disappear from the map.
+        // Generic alerts are returned unfiltered within the configured 10 km radius.
+        // Fall back to route-relevant alerts while talking to an older backend.
         mapAlertsById = Dictionary(
-            response.alerts.map { ($0.id, $0) },
+            (response.genericAlerts ?? response.alerts).map { ($0.id, $0) },
             uniquingKeysWith: { _, latest in latest }
         )
         mapAlerts = mapAlertsById.values.sorted { lhs, rhs in

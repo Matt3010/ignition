@@ -47,6 +47,7 @@ struct RoadContextResponse: Codable {
     let direction: String
     let dataTimestamp: String
     let alerts: [RoadAlert]
+    let genericAlerts: [RoadAlert]?
 
     var limitText: String {
         guard let speedLimitKmh else { return "n/d" }

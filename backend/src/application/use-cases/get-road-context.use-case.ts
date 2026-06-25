@@ -24,20 +24,29 @@ export class GetRoadContextUseCase {
     const trace = this.traceStore.add(sample);
 
     try {
-      const previousPosition = trace.length >= 2
-        ? { latitude: trace[trace.length - 2].latitude, longitude: trace[trace.length - 2].longitude }
-        : null;
+      const previousPosition =
+        trace.length >= 2
+          ? {
+              latitude: trace[trace.length - 2].latitude,
+              longitude: trace[trace.length - 2].longitude,
+            }
+          : null;
       const previousState = this.traceStore.getState(sample.sessionId);
       const match = await this.provider.match({ sample, trace, previousState });
 
       const nearby = await this.alertRepository.findNearby({
         latitude: sample.latitude,
         longitude: sample.longitude,
-        radiusMeters: this.config.ALERT_SEARCH_RADIUS_METERS,
+        radiusMeters: Math.max(
+          this.config.ALERT_SEARCH_RADIUS_METERS,
+          this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS,
+        ),
       });
 
       const alerts = filterRelevantAlerts({
-        alerts: nearby,
+        alerts: nearby.filter(
+          (alert) => alert.distanceMeters <= this.config.ALERT_SEARCH_RADIUS_METERS,
+        ),
         userCourse: sample.course,
         matchedRoadBearing: match.bearing,
         userLatitude: sample.latitude,
@@ -75,6 +84,10 @@ export class GetRoadContextUseCase {
         direction: match.direction,
         dataTimestamp: match.dataTimestamp,
         alerts,
+        genericAlerts: nearby
+          .filter((alert) => alert.distanceMeters <= this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS)
+          .sort((a, b) => a.distanceMeters - b.distanceMeters)
+          .map(toAlertResponse),
       };
     } catch (error) {
       this.traceStore.rollbackLast(sample.sessionId, sample.timestamp);

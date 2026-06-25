@@ -12,6 +12,7 @@ const envSchema = z.object({
   MAX_SAMPLE_AGE_SECONDS: z.coerce.number().positive().default(60),
   MAX_SAMPLE_FUTURE_SECONDS: z.coerce.number().min(0).default(5),
   ALERT_SEARCH_RADIUS_METERS: z.coerce.number().positive().default(1500),
+  GENERIC_ALERT_SEARCH_RADIUS_METERS: z.coerce.number().positive().default(10000),
   ALERT_BEHIND_MIN_ANGLE_DEGREES: z.coerce.number().min(90).max(180).default(135),
   ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES: z.coerce.number().min(135).max(180).default(170),
   ALERT_BEHIND_MIN_SPEED_KMH: z.coerce.number().min(0).default(5),
@@ -40,7 +41,9 @@ export type AppConfig = z.infer<typeof envSchema>;
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const config = envSchema.parse(env);
   if (config.ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES < config.ALERT_BEHIND_MIN_ANGLE_DEGREES) {
-    throw new Error("ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES must be greater than or equal to ALERT_BEHIND_MIN_ANGLE_DEGREES");
+    throw new Error(
+      "ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES must be greater than or equal to ALERT_BEHIND_MIN_ANGLE_DEGREES",
+    );
   }
   return config;
 }
