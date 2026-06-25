@@ -327,7 +327,7 @@ private struct FullScreenRecordingMapView: View {
     let onClose: () -> Void
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .topTrailing) {
             RecordingMapView(
                 cameraPosition: $cameraPosition,
                 hasCenteredInitially: $hasCenteredInitially,
@@ -509,12 +509,9 @@ private struct RecordingMapView: View {
                 Text(recorder.currentRoadContext?.roadName ?? "Strada non riconosciuta")
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                Text("GPS \(accuracyText)")
+                Label("Precisione \(accuracyText)", systemImage: "location.circle")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Label("\(Int(recorder.currentSpeedKmh.rounded())) km/h", systemImage: "speedometer")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(limitBadgeColor)
                 if recorder.currentRoadContext?.alertsStatus == "unavailable" {
                     Label("Alert non disponibili", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2.weight(.semibold))
