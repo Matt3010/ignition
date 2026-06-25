@@ -25,6 +25,16 @@ describe("OSM refresh resilience", () => {
     expect(script).toContain("osm_refresh_staging_without_valid_osm");
   });
 
+  it("uses five days as the default successful refresh interval", () => {
+    const script = read("scripts/osm-refresh-loop.sh");
+    const backendCompose = read("docker-compose.yml");
+    const registryCompose = read("docker-compose.registry.yml");
+
+    expect(script).toContain('OSM_REFRESH_INTERVAL_SECONDS="${OSM_REFRESH_INTERVAL_SECONDS:-432000}"');
+    expect(backendCompose).toContain("${OSM_REFRESH_INTERVAL_SECONDS:-432000}");
+    expect(registryCompose).toContain("${OSM_REFRESH_INTERVAL_SECONDS:-432000}");
+  });
+
   it("retries failed refreshes sooner than the normal scheduled interval", () => {
     const script = read("scripts/osm-refresh-loop.sh");
 

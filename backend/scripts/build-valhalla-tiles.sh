@@ -417,6 +417,25 @@ recover_corrupted_graph_tiles() {
   echo '{"event":"valhalla_corrupted_graph_tiles_cleared","retryFrom":"build","preservedIntermediates":true}' >&2
 }
 
+has_constructedges_intermediates() {
+  local tile_dir="$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+  [[ -s "$tile_dir/ways.bin" ]] &&
+    [[ -s "$tile_dir/way_nodes.bin" ]] &&
+    [[ -s "$tile_dir/osmdata_counts.bin" ]]
+}
+
+reset_incomplete_constructedges_state() {
+  echo '{"event":"valhalla_constructedges_state_invalid","action":"full_graph_rebuild","reason":"missing_intermediate_files"}' >&2
+  rm -f "$STATE_DIR/constructedges.complete" "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -mindepth 1 -delete
+  mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+  echo '{"event":"valhalla_graph_staging_cleared","retryFrom":"initialize"}' >&2
+}
+
+if [[ -f "$STATE_DIR/constructedges.complete" ]] && ! has_constructedges_intermediates; then
+  reset_incomplete_constructedges_state
+fi
+
 if [[ ! -f "$STATE_DIR/constructedges.complete" ]]; then
   run_stage initialize constructedges constructedges.complete
 fi

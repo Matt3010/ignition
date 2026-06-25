@@ -196,7 +196,7 @@ Aggiornamento automatico ogni 24 ore:
 docker compose --profile maintenance up -d osm-refresh
 ```
 
-Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`. Se le tile non esistono ancora, esegue automaticamente un bootstrap immediato; altrimenti rispetta `OSM_REFRESH_RUN_ON_START` e poi attende `OSM_REFRESH_INTERVAL_SECONDS`, default `86400`, tra un ciclo e il successivo. Ogni refresh scarica e valida il nuovo estratto, ricostruisce le tile in staging, le attiva mantenendo stabile il mount di Valhalla, attende che `/status` torni healthy, importa gli alert e applica rollback delle tile se una fase critica fallisce.
+Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`. Se le tile non esistono ancora, esegue automaticamente un bootstrap immediato; altrimenti rispetta `OSM_REFRESH_RUN_ON_START` e poi attende `OSM_REFRESH_INTERVAL_SECONDS`, default `432000`, tra un ciclo e il successivo. Ogni refresh scarica e valida il nuovo estratto, ricostruisce le tile in staging, le attiva mantenendo stabile il mount di Valhalla, attende che `/status` torni healthy, importa gli alert e applica rollback delle tile se una fase critica fallisce.
 
 ```bash
 OSM_REFRESH_RUN_ON_START=true docker compose --profile maintenance up -d osm-refresh

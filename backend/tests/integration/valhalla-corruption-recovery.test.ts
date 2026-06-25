@@ -61,6 +61,42 @@ describe("Valhalla graph-tile corruption recovery", () => {
     expect(() => readFileSync(join(stateDir, "cleanup.complete"))).toThrow();
   });
 
+
+  it("falls back to a full graph rebuild when preserved intermediates are already missing", () => {
+    const root = mkdtempSync(join(tmpdir(), "valhalla-missing-intermediates-"));
+    const stateDir = join(root, ".build-state");
+    const tileDir = join(root, "valhalla_tiles");
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(tileDir, { recursive: true });
+
+    writeFileSync(join(stateDir, "constructedges.complete"), "");
+    writeFileSync(join(stateDir, "build.complete"), "");
+    writeFileSync(join(stateDir, "cleanup.complete"), "");
+    writeFileSync(join(tileDir, "stale.gph"), "broken");
+
+    const helpers = script.match(
+      /has_constructedges_intermediates\(\) \{[\s\S]*?\n\}\n\nreset_incomplete_constructedges_state\(\) \{[\s\S]*?\n\}/,
+    );
+    if (!helpers) {
+      throw new Error("constructedges validation helpers not found");
+    }
+
+    const harness = `set -euo pipefail
+STATE_DIR="$1"
+VALHALLA_TILE_DIR_ABS="$2"
+${helpers[0]}
+if ! has_constructedges_intermediates; then reset_incomplete_constructedges_state; fi
+`;
+    execFileSync("bash", ["-c", harness, "bash", stateDir, root], {
+      stdio: "pipe",
+    });
+
+    expect(() => readFileSync(join(stateDir, "constructedges.complete"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "cleanup.complete"))).toThrow();
+    expect(() => readFileSync(join(tileDir, "stale.gph"))).toThrow();
+  });
+
   it("performs at most one automatic recovery attempt per invocation", () => {
     const guardedRetry = script.match(
       /if ! run_stage enhance cleanup cleanup\.complete; then[\s\S]*?recover_corrupted_graph_tiles[\s\S]*?run_stage build build build\.complete[\s\S]*?run_stage enhance cleanup cleanup\.complete/,
