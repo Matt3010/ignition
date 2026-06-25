@@ -468,22 +468,35 @@ private struct RecordingMapView: View {
                 }
             }
 
-            if let onToggleFullScreen {
-                VStack {
+            VStack {
+                Spacer()
+                HStack {
                     Spacer()
-                    HStack {
-                        Spacer()
-                        Button(action: onToggleFullScreen) {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    VStack(spacing: 10) {
+                        Button(action: centerOnCurrentPosition) {
+                            Image(systemName: "location.fill")
                                 .font(.headline.weight(.semibold))
                                 .padding(12)
                                 .background(.regularMaterial, in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Apri mappa a schermo intero")
-                        .padding(12)
+                        .disabled(recorder.currentCoordinate == nil)
+                        .opacity(recorder.currentCoordinate == nil ? 0.45 : 1)
+                        .accessibilityLabel("Centra sulla posizione corrente")
+
+                        if let onToggleFullScreen {
+                            Button(action: onToggleFullScreen) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.headline.weight(.semibold))
+                                    .padding(12)
+                                    .background(.regularMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Apri mappa a schermo intero")
+                        }
                     }
                 }
+                .padding(12)
             }
         }
         .onAppear(perform: centerOnCurrentPositionOnce)
@@ -496,9 +509,12 @@ private struct RecordingMapView: View {
                 Text(recorder.currentRoadContext?.roadName ?? "Strada non riconosciuta")
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                Text("\(Int(recorder.currentSpeedKmh.rounded())) km/h · GPS \(accuracyText)")
+                Text("GPS \(accuracyText)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Label("\(Int(recorder.currentSpeedKmh.rounded())) km/h", systemImage: "speedometer")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(limitBadgeColor)
                 if recorder.currentRoadContext?.alertsStatus == "unavailable" {
                     Label("Alert non disponibili", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2.weight(.semibold))
@@ -763,11 +779,22 @@ private struct RecordingMapView: View {
     private func centerOnCurrentPositionOnce() {
         guard !hasCenteredInitially, let coordinate = recorder.currentCoordinate else { return }
         hasCenteredInitially = true
+        setCamera(center: coordinate, meters: 1_500)
+    }
+
+    private func centerOnCurrentPosition() {
+        guard let coordinate = recorder.currentCoordinate else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            setCamera(center: coordinate, meters: 500)
+        }
+    }
+
+    private func setCamera(center coordinate: CLLocationCoordinate2D, meters: CLLocationDistance) {
         cameraPosition = .region(
             MKCoordinateRegion(
                 center: coordinate,
-                latitudinalMeters: 1_500,
-                longitudinalMeters: 1_500
+                latitudinalMeters: meters,
+                longitudinalMeters: meters
             )
         )
     }
