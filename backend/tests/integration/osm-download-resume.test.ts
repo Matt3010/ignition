@@ -43,4 +43,20 @@ describe("OSM refresh resilience", () => {
     expect(script).toContain("failure_delay=$((failure_delay * 2))");
     expect(script).toContain("osm_refresh_waiting");
   });
+
+  it("persists OSM refresh logs to the reports directory", () => {
+    const script = read("scripts/osm-refresh-loop.sh");
+    const backendCompose = read("docker-compose.yml");
+    const registryCompose = read("docker-compose.registry.yml");
+    const deployCompose = read("../server-deploy/docker-compose.yml");
+
+    expect(script).toContain("OSM_REFRESH_LOG_FILE");
+    expect(script).toContain("tee -a");
+    expect(script).toContain("osm_refresh_file_logging_enabled");
+    expect(script).toContain("OSM_REFRESH_INTEGRITY_CHECK_INTERVAL_SECONDS");
+    for (const compose of [backendCompose, registryCompose, deployCompose]) {
+      expect(compose).toContain("OSM_REFRESH_LOG_DIR: /app/reports/osm-refresh");
+      expect(compose).toContain("- ./reports:/app/reports");
+    }
+  });
 });

@@ -197,6 +197,7 @@ docker compose --profile maintenance up -d osm-refresh
 ```
 
 Il servizio `osm-refresh` esegue `npm run osm:refresh:loop`. Se le tile non esistono ancora, esegue automaticamente un bootstrap immediato; altrimenti rispetta `OSM_REFRESH_RUN_ON_START` e poi attende `OSM_REFRESH_INTERVAL_SECONDS`, default `432000`, tra un ciclo e il successivo. Ogni refresh scarica e valida il nuovo estratto, ricostruisce le tile in staging, le attiva mantenendo stabile il mount di Valhalla, attende che `/status` torni healthy, importa gli alert e applica rollback delle tile se una fase critica fallisce.
+Gli stessi eventi visibili con `docker compose logs -f osm-refresh` vengono salvati anche in `reports/osm-refresh/osm-refresh.log`; all'avvio il file viene ruotato se supera `OSM_REFRESH_LOG_MAX_BYTES`, mantenendo fino a `OSM_REFRESH_LOG_MAX_FILES` copie.
 
 ```bash
 OSM_REFRESH_RUN_ON_START=true docker compose --profile maintenance up -d osm-refresh

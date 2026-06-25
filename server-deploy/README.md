@@ -63,6 +63,7 @@ docker compose logs -f backend
 docker compose logs -f osm-refresh
 docker compose logs -f valhalla
 docker compose logs -f postgres
+tail -f reports/osm-refresh/osm-refresh.log
 ```
 
 Keep the generated `data/`, `reports/`, and Docker volumes during normal updates.
@@ -124,10 +125,16 @@ Il download degli estratti `.osm.pbf` non usa un timeout complessivo fisso: per 
 
 Un refresh fallito viene ritentato automaticamente dopo 5 minuti, con backoff progressivo fino a 1 ora; dopo un refresh riuscito torna l'intervallo pianificato normale. Non sono necessarie variabili `.env` aggiuntive.
 
+I log del servizio `osm-refresh` restano disponibili anche su file in
+`reports/osm-refresh/osm-refresh.log`, oltre che in `docker compose logs`.
+All'avvio il file viene ruotato se supera `OSM_REFRESH_LOG_MAX_BYTES`
+(default: `10000000`) e conserva fino a `OSM_REFRESH_LOG_MAX_FILES` copie
+(default: `5`).
+
 ## Automatic alert integrity recovery
 
-The `osm-refresh` service checks the active OSM alert dataset at startup and every
-`OSM_ALERT_HEALTHCHECK_INTERVAL_SECONDS` seconds (default: `300`). If PostgreSQL
+The `osm-refresh` service checks OSM maintenance integrity at startup and every
+`OSM_REFRESH_INTEGRITY_CHECK_INTERVAL_SECONDS` seconds (default: `300`). If PostgreSQL
 contains no active alerts but the local `*.alerts.osm` files are valid, it imports
 them immediately without rebuilding Valhalla. If the source files are missing, a
 full OSM refresh is scheduled. Alert import also runs before the Valhalla graph
