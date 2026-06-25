@@ -2,11 +2,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { alertTypes } from "../../src/domain/models/alert.js";
 
-const removedStaticTypes = ["mobileSpeedCamera", "accident", "information"] as const;
+const removedAlertTypes = [
+  "mobileSpeedCamera",
+  "accident",
+  "information",
+  "weightControl",
+  "genericEnforcement",
+  "policeControl",
+] as const;
 
 describe("alert types", () => {
   it("does not expose low-confidence static event categories", () => {
-    for (const type of removedStaticTypes) {
+    for (const type of removedAlertTypes) {
       expect(alertTypes).not.toContain(type);
     }
   });
@@ -17,14 +24,14 @@ describe("alert types", () => {
       "utf8",
     );
 
-    for (const type of removedStaticTypes) {
+    for (const type of removedAlertTypes) {
       expect(migration).toContain(`'${type}'`);
     }
     expect(migration).toContain("delete from road_alerts");
     expect(migration).toContain("road_alerts_type_check");
 
     const constraintDefinition = migration.slice(migration.indexOf("add constraint road_alerts_type_check"));
-    for (const type of removedStaticTypes) {
+    for (const type of removedAlertTypes) {
       expect(constraintDefinition).not.toContain(`'${type}'`);
     }
   });

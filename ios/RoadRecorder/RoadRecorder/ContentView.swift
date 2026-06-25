@@ -617,10 +617,7 @@ private struct RecordingMapView: View {
                         legendItem(title: "Lavori", systemImage: "wrench.and.screwdriver.fill", color: .orange, filled: true)
                         legendItem(title: "Chiusura", systemImage: "nosign", color: .orange, filled: true)
                         legendItem(title: "Pericolo stradale", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: true)
-                        legendItem(title: "Polizia", systemImage: "shield.fill", color: .blue, filled: true)
                         legendItem(title: "Accesso controllato", systemImage: "lock.fill", color: .blue, filled: true)
-                        legendItem(title: "Controllo peso", systemImage: "scalemass.fill", color: .blue, filled: true)
-                        legendItem(title: "Controllo generico", systemImage: "checkmark.shield.fill", color: .blue, filled: true)
                         legendItem(title: "Non operativo", systemImage: "exclamationmark.triangle.fill", color: .gray, filled: true)
                         legendItem(title: "Posizione precisa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false)
                         legendItem(title: "Posizione approssimativa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false, dashed: true)
@@ -714,7 +711,7 @@ private struct RecordingMapView: View {
         switch alert.type {
         case "fixedSpeedCamera", "averageSpeedCamera", "redLightCamera": return .red
         case "roadWorks", "roadClosure": return .orange
-        case "accessControl", "weightControl", "genericEnforcement", "policeControl": return .blue
+        case "accessControl": return .blue
         default: return .orange
         }
     }
@@ -760,10 +757,7 @@ private struct RecordingMapView: View {
         case "road_works", "roadWorks": return "wrench.and.screwdriver.fill"
         case "roadClosure": return "nosign"
         case "roadHazard": return "exclamationmark.triangle.fill"
-        case "police_control", "policeControl": return "shield.fill"
         case "accessControl": return "lock.fill"
-        case "weightControl": return "scalemass.fill"
-        case "genericEnforcement": return "checkmark.shield.fill"
         default: return "exclamationmark.triangle.fill"
         }
     }

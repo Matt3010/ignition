@@ -75,15 +75,13 @@ describe("OSM alert status and classification", () => {
 });
 
 describe("additional OSM enforcement coverage", () => {
-  it("keeps access, weight and generic enforcement types", () => {
+  it("keeps access enforcement and drops low-value enforcement types", () => {
     const xml = `<osm version="0.6">
       <node id="1" lat="45" lon="11"><tag k="enforcement" v="access"/></node>
       <node id="2" lat="45.001" lon="11.001"><tag k="enforcement" v="maxweight"/></node>
       <node id="3" lat="45.002" lon="11.002"><tag k="enforcement" v="check"/></node>
     </osm>`;
-    expect(parseOsmAlerts(xml).alerts.map((alert) => alert.type)).toEqual([
-      "accessControl", "weightControl", "genericEnforcement",
-    ]);
+    expect(parseOsmAlerts(xml).alerts.map((alert) => alert.type)).toEqual(["accessControl"]);
   });
 
   it("preserves OSM metadata and rejects unrelated building construction", () => {
@@ -135,16 +133,10 @@ describe("OSM enforcement capabilities", () => {
     });
   });
 
-  it("keeps unknown enforcement values as capabilities", () => {
+  it("drops unknown enforcement values", () => {
     const xml = `<osm version="0.6">
       <node id="33" lat="45.05" lon="11.05"><tag k="enforcement" v="maxheight;check"/></node>
     </osm>`;
-    const [alert] = parseOsmAlerts(xml).alerts;
-    expect(alert).toMatchObject({
-      type: "genericEnforcement",
-      subtype: "maxheight",
-      capabilities: ["maxheight", "check"],
-      primaryCapability: "maxheight",
-    });
+    expect(parseOsmAlerts(xml).alerts).toEqual([]);
   });
 });

@@ -598,11 +598,8 @@ function alertClassificationFromTags(tags: Record<string, string>): AlertClassif
       return { type: "redLightCamera", subtype: "red_light", capabilities, primaryCapability };
     case "access":
       return { type: "accessControl", subtype: "access", capabilities, primaryCapability };
-    case "maxweight":
-    case "weigh_station":
-      return { type: "weightControl", subtype: primaryCapability, capabilities, primaryCapability };
     default:
-      return { type: "genericEnforcement", subtype: primaryCapability, capabilities, primaryCapability };
+      return null;
   }
 }
 
