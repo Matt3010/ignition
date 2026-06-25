@@ -76,7 +76,7 @@ echo "$*" >> ${JSON.stringify(bashPath(join(root, "npm.log")))}
   it("keeps an available dataset healthy while reporting a missing source extract", async () => {
     await installFakes(["42\\tsuccess\\t42"]);
     const result = run();
-    expect(result.status).toBe(0);
+    expect(result.status).toBe(5);
     expect(result.stdout).toContain('"status":"available"');
     expect(result.stderr).toContain('"event":"osm_alert_sources_missing"');
     expect(result.stderr).toContain('"datasetStatus":"available"');
@@ -95,7 +95,7 @@ echo "$*" >> ${JSON.stringify(bashPath(join(root, "npm.log")))}
   it("keeps an empty dataset healthy while reporting a missing source extract", async () => {
     await installFakes(["0\\tsuccess\\t0"]);
     const result = run();
-    expect(result.status).toBe(0);
+    expect(result.status).toBe(5);
     expect(result.stdout).toContain('"status":"empty"');
     expect(result.stderr).toContain('"event":"osm_alert_sources_missing"');
     expect(result.stderr).toContain('"datasetStatus":"empty"');
@@ -149,5 +149,12 @@ echo "$*" >> ${JSON.stringify(bashPath(join(root, "npm.log")))}
     expect(refresh.indexOf("npm run import:osm-alerts")).toBeGreaterThan(-1);
     expect(refresh.indexOf("npm run import:osm-alerts")).toBeLessThan(refresh.indexOf("npm run valhalla:build"));
     expect(refresh).toContain("osm_alerts_ready_before_valhalla_build");
+  });
+
+  it("schedules an early source repair without immediate refresh when the dataset is healthy", async () => {
+    const loop = await readFile(resolve("scripts/osm-refresh-loop.sh"), "utf8");
+    expect(loop).toContain("OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS");
+    expect(loop).toContain('"action":"schedule_source_repair"');
+    expect(loop).toContain('[[ "$status" -eq 5 ]]');
   });
 });

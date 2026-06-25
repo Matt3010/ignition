@@ -6,6 +6,7 @@ OSM_REFRESH_RUN_ON_START="${OSM_REFRESH_RUN_ON_START:-false}"
 OSM_REFRESH_FAILURE_RETRY_INITIAL_SECONDS="${OSM_REFRESH_FAILURE_RETRY_INITIAL_SECONDS:-300}"
 OSM_REFRESH_FAILURE_RETRY_MAX_SECONDS="${OSM_REFRESH_FAILURE_RETRY_MAX_SECONDS:-3600}"
 OSM_ALERT_HEALTHCHECK_INTERVAL_SECONDS="${OSM_ALERT_HEALTHCHECK_INTERVAL_SECONDS:-300}"
+OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS="${OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS:-3600}"
 VALHALLA_TILE_DIR="${VALHALLA_TILE_DIR:-./data/valhalla}"
 
 failure_delay="$OSM_REFRESH_FAILURE_RETRY_INITIAL_SECONDS"
@@ -40,6 +41,12 @@ run_alert_integrity_check() {
   if [[ "$status" -eq 2 ]]; then
     echo '{"event":"osm_alert_sources_missing","action":"schedule_full_refresh"}' >&2
     next_refresh_at=0
+  elif [[ "$status" -eq 5 ]]; then
+    echo "{\"event\":\"osm_alert_sources_missing\",\"action\":\"schedule_source_repair\",\"nextRefreshSeconds\":$OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS}" >&2
+    local repair_at=$(( $(date +%s) + OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS ))
+    if (( repair_at < next_refresh_at )); then
+      next_refresh_at="$repair_at"
+    fi
   else
     echo "{\"event\":\"osm_alert_integrity_check_failed\",\"exitCode\":$status}" >&2
   fi

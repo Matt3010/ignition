@@ -75,10 +75,12 @@ fi
 
 if [[ "$dataset_status" == "available" ]]; then
   echo "{\"event\":\"osm_alert_healthcheck_ok\",\"status\":\"available\",\"activeAlerts\":$active_count}"
+  if [[ "$sources_missing" == "true" ]]; then exit 5; fi
   exit 0
 fi
 if [[ "$dataset_status" == "empty" ]]; then
   echo '{"event":"osm_alert_healthcheck_ok","status":"empty","activeAlerts":0,"reason":"last_import_succeeded_with_zero_records"}'
+  if [[ "$sources_missing" == "true" ]]; then exit 5; fi
   exit 0
 fi
 
