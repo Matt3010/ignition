@@ -58,6 +58,7 @@ struct RoadContextResponse: Codable {
 
 struct RoadAlert: Codable {
     let id: String
+    let relevance: String
     let type: String
     let subtype: String?
     let capabilities: [String]
@@ -81,7 +82,7 @@ struct RoadAlert: Codable {
     let osmTimestamp: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, subtype, capabilities, primaryCapability, distanceMeters
+        case id, relevance, type, subtype, capabilities, primaryCapability, distanceMeters
         case speedLimitKmh, speedLimitSource, latitude, longitude, direction, confidence
         case operationalStatus, statusReason, directionBearings, osmPresenceStatus, active
         case positionApproximate, osmType, osmId, osmRelationId, osmTimestamp
@@ -90,6 +91,7 @@ struct RoadAlert: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        relevance = try container.decodeIfPresent(String.self, forKey: .relevance) ?? "nearby"
         type = try container.decode(String.self, forKey: .type)
         subtype = try container.decodeIfPresent(String.self, forKey: .subtype)
         capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities) ?? []
@@ -111,6 +113,36 @@ struct RoadAlert: Codable {
         osmId = try container.decodeIfPresent(String.self, forKey: .osmId)
         osmRelationId = try container.decodeIfPresent(String.self, forKey: .osmRelationId)
         osmTimestamp = try container.decodeIfPresent(String.self, forKey: .osmTimestamp)
+    }
+
+    private init(copying alert: RoadAlert, relevance: String) {
+        id = alert.id
+        self.relevance = relevance
+        type = alert.type
+        subtype = alert.subtype
+        capabilities = alert.capabilities
+        primaryCapability = alert.primaryCapability
+        distanceMeters = alert.distanceMeters
+        speedLimitKmh = alert.speedLimitKmh
+        speedLimitSource = alert.speedLimitSource
+        latitude = alert.latitude
+        longitude = alert.longitude
+        direction = alert.direction
+        confidence = alert.confidence
+        operationalStatus = alert.operationalStatus
+        statusReason = alert.statusReason
+        directionBearings = alert.directionBearings
+        osmPresenceStatus = alert.osmPresenceStatus
+        active = alert.active
+        positionApproximate = alert.positionApproximate
+        osmType = alert.osmType
+        osmId = alert.osmId
+        osmRelationId = alert.osmRelationId
+        osmTimestamp = alert.osmTimestamp
+    }
+
+    func withRelevance(_ relevance: String) -> RoadAlert {
+        RoadAlert(copying: self, relevance: relevance)
     }
 }
 

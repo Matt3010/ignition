@@ -1,10 +1,19 @@
 import type { AlertCandidate } from "../../domain/models/alert.js";
-import type { PublicMatchStatus, RoadContextResponse, RoadMatch } from "../../domain/models/road-context.js";
+import type {
+  AlertRelevance,
+  PublicMatchStatus,
+  RoadContextResponse,
+  RoadMatch,
+} from "../../domain/models/road-context.js";
 import { roundMeters } from "../../domain/services/geo.js";
 
-export function toAlertResponse(alert: AlertCandidate): RoadContextResponse["alerts"][number] {
+export function toAlertResponse(
+  alert: AlertCandidate,
+  relevance: AlertRelevance,
+): RoadContextResponse["alerts"][number] {
   return {
     id: alert.id,
+    relevance,
     type: alert.type,
     subtype: alert.subtype ?? null,
     capabilities: alert.capabilities ?? [],

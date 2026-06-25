@@ -33,6 +33,7 @@ export interface MatchedRoad {
 
 export type UnmatchedReason = "noMatch" | "providerError";
 export type PublicMatchStatus = "matched" | "noMatch" | "providerUnavailable";
+export type AlertRelevance = "route" | "nearby";
 
 export interface UnmatchedRoad {
   matched: false;
@@ -60,6 +61,7 @@ export interface RoadContextResponse extends Omit<
   alertsStatus: "available" | "empty" | "unavailable";
   alerts: Array<{
     id: string;
+    relevance: AlertRelevance;
     type: AlertCandidate["type"];
     subtype: string | null;
     capabilities: string[];
@@ -84,6 +86,7 @@ export interface RoadContextResponse extends Omit<
   }>;
   genericAlerts: Array<{
     id: string;
+    relevance: AlertRelevance;
     type: AlertCandidate["type"];
     subtype: string | null;
     capabilities: string[];

@@ -391,7 +391,7 @@ private struct RecordingMapView: View {
                 }
 
                 ForEach(visibleMapAlerts, id: \.id) { alert in
-                    let isPriority = priorityAlertIDs.contains(alert.id)
+                    let isPriority = alert.relevance == "route"
                     Annotation(
                         DriveEventFormatter.alertTypeText(alert.type),
                         coordinate: CLLocationCoordinate2D(latitude: alert.latitude, longitude: alert.longitude)
@@ -553,16 +553,11 @@ private struct RecordingMapView: View {
         recorder.currentRoadContext?.alerts.min { $0.distanceMeters < $1.distanceMeters }
     }
 
-    private var priorityAlertIDs: Set<String> {
-        Set(recorder.currentRoadContext?.alerts.map(\.id) ?? [])
-    }
-
     private var visibleMapAlerts: [RoadAlert] {
-        let priorityIDs = priorityAlertIDs
         var result: [RoadAlert] = []
         var included = Set<String>()
 
-        for alert in recorder.mapAlerts where priorityIDs.contains(alert.id) {
+        for alert in recorder.mapAlerts where alert.relevance == "route" {
             result.append(alert)
             included.insert(alert.id)
         }
@@ -574,8 +569,8 @@ private struct RecordingMapView: View {
         }
 
         return result.sorted { lhs, rhs in
-            if priorityIDs.contains(lhs.id) != priorityIDs.contains(rhs.id) {
-                return priorityIDs.contains(lhs.id)
+            if (lhs.relevance == "route") != (rhs.relevance == "route") {
+                return lhs.relevance == "route"
             }
             if lhs.distanceMeters == rhs.distanceMeters {
                 return lhs.id < rhs.id
@@ -633,7 +628,7 @@ private struct RecordingMapView: View {
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.secondary)
                             legendItem(title: "Pieno: sul percorso", systemImage: "camera.fill", color: .red, style: .filled)
-                            legendItem(title: "Vuoto: entro 10 km", systemImage: "camera.fill", color: .red, style: .outline)
+                            legendItem(title: "Vuoto: vicino, non sul percorso", systemImage: "camera.fill", color: .red, style: .outline)
                             legendItem(title: "Bordo continuo: posizione precisa", systemImage: "camera.fill", color: .red, style: .outline)
                             legendItem(title: "Bordo tratteggiato: posizione approssimativa", systemImage: "camera.fill", color: .red, style: .dashedOutline)
                             legendItem(title: "Grigio: non operativo", systemImage: "camera.fill", color: .gray, style: .filled)
@@ -750,7 +745,7 @@ private struct RecordingMapView: View {
     }
 
     private func alertAccessibilityLabel(_ alert: RoadAlert, isPriority: Bool) -> String {
-        let category = isPriority ? "alert prioritario sul percorso" : "alert generico entro dieci chilometri"
+        let category = isPriority ? "alert sul percorso" : "alert vicino, non sul percorso"
         let precision = alert.positionApproximate == true ? "posizione approssimativa" : "posizione precisa"
         return "\(category), \(DriveEventFormatter.alertTypeText(alert.type)), distanza \(Int(alert.distanceMeters.rounded())) metri, confidenza \(Int((alert.confidence * 100).rounded())) percento, \(precision)"
     }

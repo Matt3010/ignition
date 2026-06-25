@@ -365,12 +365,16 @@ final class LocationRecorder: NSObject, ObservableObject {
     private func updateMapAlerts(from response: RoadContextResponse?) {
         guard let response else { return }
 
-        // Generic alerts are returned unfiltered within the configured 10 km radius.
-        // Fall back to route-relevant alerts while talking to an older backend.
+        // The backend labels every map alert explicitly. Route alerts are overlaid
+        // to preserve compatibility with older responses that omitted `relevance`.
+        let nearbyAlerts = response.genericAlerts ?? []
         mapAlertsById = Dictionary(
-            (response.genericAlerts ?? response.alerts).map { ($0.id, $0) },
+            nearbyAlerts.map { ($0.id, $0) },
             uniquingKeysWith: { _, latest in latest }
         )
+        for alert in response.alerts {
+            mapAlertsById[alert.id] = alert.withRelevance("route")
+        }
         mapAlerts = mapAlertsById.values.sorted { lhs, rhs in
             if lhs.distanceMeters == rhs.distanceMeters {
                 return lhs.id < rhs.id

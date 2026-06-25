@@ -62,7 +62,9 @@ export class GetRoadContextUseCase {
         behindMinSpeedKmh: this.config.ALERT_BEHIND_MIN_SPEED_KMH,
         behindMaxGpsAccuracyMeters: this.config.ALERT_BEHIND_MAX_GPS_ACCURACY_METERS,
         behindMinDistanceIncreaseMeters: this.config.ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS,
-      }).map(toAlertResponse);
+      }).map((alert) => toAlertResponse(alert, "route"));
+
+      const routeAlertIds = new Set(alerts.map((alert) => alert.id));
 
       if (match.matched) {
         this.traceStore.setState(sample.sessionId, {
@@ -91,7 +93,9 @@ export class GetRoadContextUseCase {
         genericAlerts: nearby
           .filter((alert) => alert.distanceMeters <= this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS)
           .sort((a, b) => a.distanceMeters - b.distanceMeters)
-          .map(toAlertResponse),
+          .map((alert) =>
+            toAlertResponse(alert, routeAlertIds.has(alert.id) ? "route" : "nearby"),
+          ),
       };
     } catch (error) {
       this.traceStore.rollbackLast(sample.sessionId, sample.timestamp);

@@ -18,6 +18,7 @@ export const roadContextRequestSchema = z.object({
 
 const roadAlertResponseSchema = z.object({
   id: z.string(),
+  relevance: z.enum(["route", "nearby"]),
   type: z.enum(alertTypes),
   subtype: z.string().nullable(),
   capabilities: z.array(z.string()),
