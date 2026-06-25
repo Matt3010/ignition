@@ -321,14 +321,13 @@ private struct FullScreenRecordingMapView: View {
     let onClose: () -> Void
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .bottomTrailing) {
             RecordingMapView(
                 cameraPosition: $cameraPosition,
                 hasCenteredInitially: $hasCenteredInitially,
                 showsAlertLegend: true,
                 onToggleFullScreen: nil
             )
-            .ignoresSafeArea()
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
@@ -445,6 +444,7 @@ private struct RecordingMapView: View {
                 MapCompass()
                 MapScaleView()
             }
+            .ignoresSafeArea(.container, edges: showsAlertLegend ? .all : [])
 
             mapStatusOverlay
                 .padding(8)
@@ -540,37 +540,46 @@ private struct RecordingMapView: View {
     }
 
     private var alertLegend: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Legenda alert")
-                .font(.caption.weight(.semibold))
+        HStack(spacing: 12) {
+            legendItem(
+                title: "Sul percorso",
+                filled: true
+            )
 
-            Label {
-                Text("Prioritario sul percorso")
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(5)
-                    .background(.orange, in: Circle())
-                    .overlay(Circle().stroke(.white, lineWidth: 1.5))
-            }
+            Divider()
+                .frame(height: 18)
 
-            Label {
-                Text("Generico entro 10 km")
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .padding(4)
-                    .background(.regularMaterial, in: Circle())
-                    .overlay(Circle().stroke(.orange, lineWidth: 1.25))
-            }
+            legendItem(
+                title: "Entro 10 km",
+                filled: false
+            )
         }
-        .font(.caption2)
-        .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .shadow(radius: 2)
+        .font(.caption2.weight(.semibold))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.35), lineWidth: 0.5))
+        .shadow(radius: 2, y: 1)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("Alert pieni sul percorso; alert contornati entro dieci chilometri")
+    }
+
+    private func legendItem(title: String, filled: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(filled ? Color.white : Color.orange)
+                .frame(width: 18, height: 18)
+                .background {
+                    Circle().fill(filled ? Color.orange : Color.clear)
+                }
+                .overlay {
+                    Circle().stroke(filled ? Color.white : Color.orange, lineWidth: 1.25)
+                }
+
+            Text(title)
+                .lineLimit(1)
+        }
     }
 
     private var smoothedRouteCoordinates: [CLLocationCoordinate2D] {
