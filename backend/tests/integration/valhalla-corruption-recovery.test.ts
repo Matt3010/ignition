@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +9,14 @@ const script = readFileSync(
   resolve(backendRoot, "scripts/build-valhalla-tiles.sh"),
   "utf8",
 );
+const bashAvailable = spawnSync("bash", ["-lc", "true"], { encoding: "utf8" }).status === 0;
+const describeWithBash = bashAvailable ? describe : describe.skip;
+
+function bashPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const drive = normalized.match(/^([A-Za-z]):\/(.*)$/);
+  return drive ? `/${drive[1].toLowerCase()}/${drive[2]}` : normalized;
+}
 
 function recoveryFunction(): string {
   const match = script.match(
@@ -20,7 +28,7 @@ function recoveryFunction(): string {
   return match[0];
 }
 
-describe("Valhalla graph-tile corruption recovery", () => {
+describeWithBash("Valhalla graph-tile corruption recovery", () => {
   it("detects the Valhalla offset-mismatch corruption error", () => {
     expect(script).toContain("recover_corrupted_graph_tiles() {");
     expect(script).toContain("Mismatch in end offset =");
@@ -48,7 +56,7 @@ describe("Valhalla graph-tile corruption recovery", () => {
     writeFileSync(join(nestedTileDir, "corrupted.gph"), "broken");
 
     const harness = `set -euo pipefail\nSTATE_DIR="$1"\nVALHALLA_TILE_DIR_ABS="$2"\n${recoveryFunction()}\nrecover_corrupted_graph_tiles\n`;
-    execFileSync("bash", ["-c", harness, "bash", stateDir, root], {
+    execFileSync("bash", ["-c", harness, "bash", bashPath(stateDir), bashPath(root)], {
       stdio: "pipe",
     });
 
@@ -87,7 +95,7 @@ VALHALLA_TILE_DIR_ABS="$2"
 ${helpers[0]}
 if ! has_constructedges_intermediates; then reset_incomplete_constructedges_state; fi
 `;
-    execFileSync("bash", ["-c", harness, "bash", stateDir, root], {
+    execFileSync("bash", ["-c", harness, "bash", bashPath(stateDir), bashPath(root)], {
       stdio: "pipe",
     });
 

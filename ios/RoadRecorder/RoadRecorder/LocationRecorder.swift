@@ -416,7 +416,9 @@ final class LocationRecorder: NSObject, ObservableObject {
                 ? "Aggancio in corso"
                 : result.response.alertsStatus == "unavailable"
                     ? "Alert non disponibili"
-                    : result.response.matched
+                    : result.response.alertsStatus == "empty"
+                        ? "Alert disponibili, nessun dato presente"
+                        : result.response.matched
                         ? "Invio ok"
                         : result.response.matchStatus == "providerUnavailable"
                             ? "Mappe non disponibili"

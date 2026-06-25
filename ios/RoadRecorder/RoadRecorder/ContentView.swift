@@ -209,8 +209,8 @@ private struct EventRow: View {
                         .foregroundStyle(limitCheckColor(response))
                     EventDetailLine(icon: "clock", text: "campione GPS: \(response.dataTimestamp)")
                     EventDetailLine(
-                        icon: response.alertsStatus == "unavailable" ? "exclamationmark.triangle" : "checkmark.circle",
-                        text: response.alertsStatus == "unavailable" ? "alert: non disponibili" : "alert: disponibili"
+                        icon: response.alertsStatus == "unavailable" ? "exclamationmark.triangle" : response.alertsStatus == "empty" ? "checkmark.circle" : "checkmark.circle",
+                        text: response.alertsStatus == "unavailable" ? "alert: non disponibili" : response.alertsStatus == "empty" ? "alert: disponibili, nessun dato presente" : "alert: disponibili"
                     )
 
                     if response.alertsStatus == "unavailable" {

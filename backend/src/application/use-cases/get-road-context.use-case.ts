@@ -34,7 +34,7 @@ export class GetRoadContextUseCase {
       const previousState = this.traceStore.getState(sample.sessionId);
       const match = await this.provider.match({ sample, trace, previousState });
 
-      const [nearby, alertsAvailable] = await Promise.all([
+      const [nearby, alertsStatus] = await Promise.all([
         this.alertRepository.findNearby({
         latitude: sample.latitude,
         longitude: sample.longitude,
@@ -43,7 +43,7 @@ export class GetRoadContextUseCase {
           this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS,
         ),
         }),
-        this.alertRepository.hasAvailableAlerts(),
+        this.alertRepository.getDatasetStatus().catch(() => "unavailable" as const),
       ]);
 
       const alerts = filterRelevantAlerts({
@@ -78,7 +78,7 @@ export class GetRoadContextUseCase {
       return {
         matched: match.matched,
         matchStatus: toPublicMatchStatus(match),
-        alertsStatus: alertsAvailable ? "available" : "unavailable",
+        alertsStatus,
         roadId: match.roadId,
         roadName: match.roadName,
         speedLimitKmh: match.speedLimitKmh,

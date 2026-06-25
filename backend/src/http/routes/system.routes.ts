@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { alertTypes } from "../../domain/models/alert.js";
-import type { AlertRepository } from "../../application/ports/alert-repository.js";
+import type { AlertDatasetStatus, AlertRepository } from "../../application/ports/alert-repository.js";
 import type { RoadContextProvider } from "../../application/ports/road-context-provider.js";
 import { APP_VERSION } from "../../config/app-version.js";
 
 interface DependencyHealth {
   database: "up" | "down";
   valhalla: "up" | "down";
+  alerts: AlertDatasetStatus;
   healthy: boolean;
   timestamp: string;
 }
@@ -20,15 +21,18 @@ export async function registerSystemRoutes(
   },
 ): Promise<void> {
   const readDependencyHealth = async (): Promise<DependencyHealth> => {
-    const [database, valhalla] = await Promise.all([
+    const [database, valhalla, alerts] = await Promise.all([
       dependencies.databaseEnabled ? dependencies.alertRepository.health() : Promise.resolve<"up">("up"),
       dependencies.provider.health(),
+      dependencies.databaseEnabled
+        ? dependencies.alertRepository.getDatasetStatus().catch(() => "unavailable" as const)
+        : Promise.resolve<AlertDatasetStatus>("available"),
     ]);
-
     return {
       database,
       valhalla,
-      healthy: database === "up" && valhalla === "up",
+      alerts,
+      healthy: database === "up" && valhalla === "up" && alerts !== "unavailable",
       timestamp: new Date().toISOString(),
     };
   };
@@ -39,6 +43,7 @@ export async function registerSystemRoutes(
       status: health.healthy ? "ok" : "degraded",
       database: health.database,
       valhalla: health.valhalla,
+      alerts: health.alerts,
       timestamp: health.timestamp,
     };
   });
@@ -49,6 +54,7 @@ export async function registerSystemRoutes(
       ready: health.healthy,
       database: health.database,
       valhalla: health.valhalla,
+      alerts: health.alerts,
       timestamp: health.timestamp,
     });
   });

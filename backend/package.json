@@ -17,6 +17,7 @@
     "migrate": "node scripts/run-compiled.mjs migrate",
     "seed": "npm run import:osm-alerts",
     "import:osm-alerts": "node scripts/run-compiled.mjs import-osm-alerts",
+    "alerts:ensure": "bash scripts/ensure-osm-alerts.sh",
     "valhalla:build": "bash scripts/build-valhalla-tiles.sh",
     "valhalla:package": "bash scripts/package-valhalla-tiles.sh",
     "raspberry:smoke": "node scripts/run-compiled.mjs raspberry-smoke",

@@ -123,3 +123,12 @@ and verifies the archive. A custom archive URL requires an explicit
 Il download degli estratti `.osm.pbf` non usa un timeout complessivo fisso: per file grandi resta attivo finché il trasferimento continua a una velocità utile. Se la connessione si interrompe, il file parziale `*.download.osm.pbf` viene conservato e il tentativo successivo riparte dal byte già scaricato tramite HTTP Range. Solo un payload completato ma non valido viene eliminato.
 
 Un refresh fallito viene ritentato automaticamente dopo 5 minuti, con backoff progressivo fino a 1 ora; dopo un refresh riuscito torna l'intervallo pianificato normale. Non sono necessarie variabili `.env` aggiuntive.
+
+## Automatic alert integrity recovery
+
+The `osm-refresh` service checks the active OSM alert dataset at startup and every
+`OSM_ALERT_HEALTHCHECK_INTERVAL_SECONDS` seconds (default: `300`). If PostgreSQL
+contains no active alerts but the local `*.alerts.osm` files are valid, it imports
+them immediately without rebuilding Valhalla. If the source files are missing, a
+full OSM refresh is scheduled. Alert import also runs before the Valhalla graph
+build, so a tile-build failure does not remove alert availability.

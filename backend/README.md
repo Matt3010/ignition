@@ -495,3 +495,13 @@ timezone database and invalidates the downstream `build` and
 Il download degli estratti `.osm.pbf` non usa un timeout complessivo fisso: per file grandi resta attivo finché il trasferimento continua a una velocità utile. Se la connessione si interrompe, il file parziale `*.download.osm.pbf` viene conservato e il tentativo successivo riparte dal byte già scaricato tramite HTTP Range. Solo un payload completato ma non valido viene eliminato.
 
 Un refresh fallito viene ritentato automaticamente dopo 5 minuti, con backoff progressivo fino a 1 ora; dopo un refresh riuscito torna l'intervallo pianificato normale. Non sono necessarie variabili `.env` aggiuntive.
+
+### Alert dataset availability
+
+The API distinguishes the global alert dataset state from the absence of nearby alerts:
+
+- `available`: at least one currently usable alert exists.
+- `empty`: the latest OSM import completed successfully and legitimately produced zero records.
+- `unavailable`: the import never completed, failed, or its metadata is inconsistent with the active dataset.
+
+An empty `alerts` or `genericAlerts` array with `alertsStatus: "available"` only means that no alerts were found around the requested position. The self-healing loop does not repeatedly reimport a legitimate `empty` dataset, while it repairs `unavailable` states when a valid local extract exists.

@@ -277,6 +277,16 @@ else
 fi
 
 echo "{\"event\":\"osm_refresh_staging_ready\",\"region\":\"$OSM_REGION_LABEL\",\"resumeEnabled\":true}"
+
+# Alert availability is independent from Valhalla. Import the validated alert
+# extract before the expensive graph build so a routing failure cannot leave
+# the application without alerts.
+if ! npm run import:osm-alerts; then
+  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"alert_import\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
+  exit 1
+fi
+
+echo "{\"event\":\"osm_alerts_ready_before_valhalla_build\",\"region\":\"$OSM_REGION_LABEL\"}"
 VALHALLA_TILE_DIR="$VALHALLA_STAGING_TILE_DIR" \
   VALHALLA_BUILD_HOST_TILE_DIR="$VALHALLA_STAGING_BUILD_HOST_TILE_DIR" \
   npm run valhalla:build
@@ -306,13 +316,6 @@ if ! verify_valhalla_tile_metadata; then
   stop_valhalla || true
   rollback_tiles || true
   echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"valhalla_metadata\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
-  exit 1
-fi
-
-if ! npm run import:osm-alerts; then
-  stop_valhalla || true
-  rollback_tiles
-  echo "{\"event\":\"osm_refresh_failed\",\"phase\":\"alert_import\",\"region\":\"$OSM_REGION_LABEL\"}" >&2
   exit 1
 fi
 

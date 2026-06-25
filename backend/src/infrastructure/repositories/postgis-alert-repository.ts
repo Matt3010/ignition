@@ -1,6 +1,6 @@
 import type pg from "pg";
 import type { AlertCandidate, RoadAlert } from "../../domain/models/alert.js";
-import type { AlertRepository } from "../../application/ports/alert-repository.js";
+import type { AlertDatasetStatus, AlertRepository } from "../../application/ports/alert-repository.js";
 import type { OsmBounds } from "../osm/osm-alert-parser.js";
 
 type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
@@ -87,6 +87,38 @@ export class PostgisAlertRepository implements AlertRepository {
       `,
     );
     return result.rows[0]?.available === true;
+  }
+
+  async getDatasetStatus(): Promise<AlertDatasetStatus> {
+    const result = await this.pool.query(
+      `
+      with active_alerts as (
+        select count(*)::int as count
+        from road_alerts
+        where active = true
+          and osm_presence_status = 'present'
+          and (valid_from is null or valid_from <= now())
+          and (valid_until is null or valid_until >= now())
+      ), latest_import as (
+        select status, records_count
+        from data_imports
+        where source = 'osm'
+        order by imported_at desc, id desc
+        limit 1
+      )
+      select
+        active_alerts.count as active_count,
+        latest_import.status as import_status,
+        latest_import.records_count as imported_records
+      from active_alerts
+      left join latest_import on true
+      `,
+    );
+    const row = result.rows[0];
+    const activeCount = Number(row?.active_count ?? 0);
+    if (activeCount > 0) return "available";
+    if (row?.import_status === "success" && Number(row?.imported_records ?? -1) === 0) return "empty";
+    return "unavailable";
   }
 
   async upsertMany(alerts: RoadAlert[]): Promise<number> {
