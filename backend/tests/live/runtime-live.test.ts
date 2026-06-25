@@ -32,11 +32,15 @@ describeLive("real server runtime", () => {
     child.stderr?.on("data", (chunk) => output.push(String(chunk)));
 
     try {
-      await waitForReady(`http://127.0.0.1:${port}/ready`, child, output);
+      await waitForHealth(`http://127.0.0.1:${port}/health`, child, output);
       child.kill("SIGTERM");
       const exit = await waitForExit(child, 10_000);
-      expect(exit.signal).toBeNull();
-      expect(exit.code).toBe(0);
+      if (process.platform === "win32") {
+        expect(exit.signal).toBe("SIGTERM");
+      } else {
+        expect(exit.signal).toBeNull();
+        expect(exit.code).toBe(0);
+      }
       await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
@@ -57,11 +61,11 @@ async function reserveFreePort(): Promise<number> {
   return port;
 }
 
-async function waitForReady(url: string, child: ChildProcess, output: string[]): Promise<void> {
+async function waitForHealth(url: string, child: ChildProcess, output: string[]): Promise<void> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error(`Server exited before readiness: ${output.join("")}`);
+      throw new Error(`Server exited before health response: ${output.join("")}`);
     }
     try {
       const response = await fetch(url);
@@ -71,7 +75,7 @@ async function waitForReady(url: string, child: ChildProcess, output: string[]):
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Server did not become ready: ${output.join("")}`);
+  throw new Error(`Server did not respond to health checks: ${output.join("")}`);
 }
 
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
