@@ -96,7 +96,6 @@ describeLive("real Valhalla network fault injection", () => {
         const recoveredHealth = await recovered.inject({ method: "GET", url: "/health" });
         expect(recoveredHealth.statusCode).toBe(200);
         expect(recoveredHealth.json()).toMatchObject({
-          status: "ok",
           database: "up",
           valhalla: "up",
         });

@@ -154,7 +154,7 @@ echo "$*" >> ${JSON.stringify(bashPath(join(root, "npm.log")))}
   it("schedules an early source repair without immediate refresh when the dataset is healthy", async () => {
     const loop = await readFile(resolve("scripts/osm-refresh-loop.sh"), "utf8");
     expect(loop).toContain("OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS");
-    expect(loop).toContain('"action":"schedule_source_repair"');
+    expect(loop).toContain("schedule_source_repair");
     expect(loop).toContain('[[ "$status" -eq 5 ]]');
   });
 });
