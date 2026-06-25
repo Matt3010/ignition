@@ -125,17 +125,59 @@ npm run import:osm-alerts -- --file data/osm/italy.alerts.osm
 
 Il parser OSM importa solo dati statici realmente presenti:
 
-- `highway=speed_camera`, `enforcement=maxspeed` e `enforcement=average_speed` -> `fixedSpeedCamera`
+- `highway=speed_camera` e `enforcement=maxspeed` -> `fixedSpeedCamera`
+- `enforcement=average_speed` -> `averageSpeedCamera`
 - le equivalenti forme lifecycle (`disused:*`, `abandoned:*`, `removed:*`, `demolished:*`, `razed:*`) vengono importate, normalizzate e marcate `notOperational`, conservando i tag OSM originali
 - `enforcement=traffic_signals` -> `redLightCamera`
 - `traffic_signals=red_light_camera` -> `redLightCamera` (anche senza `enforcement=*`)
 - `enforcement=access` -> `accessControl`
-- `enforcement=maxweight` -> `weightControl`
-- altri `enforcement=*` -> `genericEnforcement`
-- `highway=construction`, `highway=roadworks` o `roadworks=yes` -> `roadWorks`
-- `hazard=*` -> `roadHazard`
 
-Converte `maxspeed`, anche `mph`, fa upsert e registra l'import in `data_imports` con `bbox`, `file_path` e `deactivated_count`. Non inventa alert: se OSM non contiene autovelox/lavori/pericoli nell'estratto, l'import produce 0 record.
+Converte `maxspeed`, anche `mph`, fa upsert e registra l'import in `data_imports` con `bbox`, `file_path` e `deactivated_count`. Non inventa alert: se OSM non contiene autovelox, tutor, photored o accessi controllati nell'estratto, l'import produce 0 record.
+
+Tipi alert attualmente supportati dal contratto API:
+
+- `fixedSpeedCamera`
+- `averageSpeedCamera`
+- `redLightCamera`
+- `accessControl`
+
+Tipi rimossi deliberatamente per ridurre rumore in app:
+
+- `mobileSpeedCamera`
+- `accident`
+- `information`
+- `weightControl`
+- `genericEnforcement`
+- `policeControl`
+- `roadHazard`
+- `roadWorks`
+- `roadClosure`
+
+### Reintrodurre alert rimossi
+
+Se in futuro serve reintrodurre uno dei tipi rimossi, non modificare migration gia applicate. Aggiungere invece una nuova migration incrementale che:
+
+1. aggiorna il constraint `road_alerts_type_check`;
+2. lascia compatibili eventuali record gia presenti o li reinserisce tramite un nuovo import;
+3. mantiene il checksum delle migration precedenti invariato.
+
+Poi aggiornare questi punti:
+
+- `src/domain/models/alert.ts`: aggiungere il tipo in `alertTypes`.
+- `src/infrastructure/osm/osm-alert-parser.ts`: aggiungere o ripristinare la classificazione OSM.
+- `src/http/schemas/road-context.schema.ts`: usa `alertTypes`, quindi si aggiorna automaticamente se il modello e corretto.
+- `tests/unit/alert-types.test.ts`: spostare il tipo fuori dalla lista dei rimossi.
+- test parser/import: aggiungere una fixture che dimostri il mapping OSM desiderato.
+- iOS `RoadContextClient.swift`: aggiungere la label leggibile.
+- iOS `ContentView.swift`: aggiungere icona/colore e aggiornare la legenda.
+
+Esempi di mapping da ripristinare solo se davvero utili:
+
+- `enforcement=maxweight` -> `weightControl`
+- enforcement sconosciuti -> `genericEnforcement`
+- `highway=construction`, `highway=roadworks`, `roadworks=yes` -> `roadWorks`
+- `hazard=*` -> `roadHazard`
+- una classificazione esplicita di chiusura strada -> `roadClosure`
 
 Per default l'import OSM fa invalidation sull'area coperta dai record importati: gli alert `source=osm` attivi nella stessa area ma assenti nel nuovo estratto vengono marcati `active=false`. Questo evita dati vecchi quando OSM cambia. Per disattivare temporaneamente:
 
@@ -326,7 +368,7 @@ Vedere `.env.example`. Le più importanti (il provider reale, host del container
 - I dati OpenStreetMap possono essere incompleti o non aggiornati.
 - `speedLimitKmh` può essere `null`.
 - Alert dinamici live non sono disponibili senza una fonte autorizzata esterna.
-- L'MVP gestisce soprattutto autovelox fissi e dati statici (`fixedSpeedCamera`, `roadHazard`, `roadWorks`).
+- L'MVP gestisce solo alert statici selezionati: autovelox, tutor, photored e accessi controllati/ZTL.
 - Il parsing dei limiti condizionali è conservativo.
 - La qualità del map matching dipende dalle tile Valhalla e dal dato OSM disponibile.
 - Fuori dall'area dell'estratto preparato il map matching non può funzionare.
