@@ -32,6 +32,8 @@ describeWithBash("Valhalla graph-tile corruption recovery", () => {
   it("detects the Valhalla offset-mismatch corruption error", () => {
     expect(script).toContain("recover_corrupted_graph_tiles() {");
     expect(script).toContain("Mismatch in end offset =");
+    expect(script).toContain("Invalid tile data size = 0");
+    expect(script).toContain("GraphTile NodeTransition index out of bounds");
     expect(script).toContain("Tile file might (me|be) corrupted");
   });
 
@@ -67,6 +69,35 @@ describeWithBash("Valhalla graph-tile corruption recovery", () => {
     expect(() => readFileSync(join(nestedTileDir, "corrupted.gph"))).toThrow();
     expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
     expect(() => readFileSync(join(stateDir, "cleanup.complete"))).toThrow();
+  });
+
+  it.each([
+    "what():  Invalid tile data size = 0. Tile file might me corrupted\n",
+    "what():  GraphTile NodeTransition index out of bounds: 779799,2,0 transitioncount= 0\n",
+  ])("recovers from Valhalla graph corruption: %s", (message) => {
+    const root = mkdtempSync(join(tmpdir(), "valhalla-corruption-real-"));
+    const stateDir = join(root, ".build-state");
+    const tileDir = join(root, "valhalla_tiles");
+    const nestedTileDir = join(tileDir, "2", "001");
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(nestedTileDir, { recursive: true });
+
+    writeFileSync(join(stateDir, "current-stage.log"), message);
+    writeFileSync(join(stateDir, "constructedges.complete"), "");
+    writeFileSync(join(stateDir, "build.complete"), "");
+    writeFileSync(join(tileDir, "ways.bin"), "ways");
+    writeFileSync(join(tileDir, "osmdata_counts.bin"), "counts");
+    writeFileSync(join(tileDir, "way_nodes.bin"), "nodes");
+    writeFileSync(join(nestedTileDir, "corrupted.gph"), "broken");
+
+    const harness = `set -euo pipefail\nSTATE_DIR="$1"\nVALHALLA_TILE_DIR_ABS="$2"\n${recoveryFunction()}\nrecover_corrupted_graph_tiles\n`;
+    execFileSync("bash", ["-c", harness, "bash", bashPath(stateDir), bashPath(root)], {
+      stdio: "pipe",
+    });
+
+    expect(() => readFileSync(join(tileDir, "ways.bin"))).not.toThrow();
+    expect(() => readFileSync(join(nestedTileDir, "corrupted.gph"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
   });
 
 

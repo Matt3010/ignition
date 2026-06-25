@@ -405,7 +405,7 @@ run_stage() {
 
 recover_corrupted_graph_tiles() {
   local stage_log="$STATE_DIR/current-stage.log"
-  if ! grep -Eq 'Mismatch in end offset = .*Tile file might (me|be) corrupted' "$stage_log" 2>/dev/null; then
+  if ! grep -Eq 'Mismatch in end offset = .*Tile file might (me|be) corrupted|Invalid tile data size = 0\. Tile file might (me|be) corrupted|GraphTile NodeTransition index out of bounds' "$stage_log" 2>/dev/null; then
     return 1
   fi
 
