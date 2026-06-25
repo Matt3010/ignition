@@ -353,8 +353,10 @@ private struct RecordingMapView: View {
     @EnvironmentObject private var recorder: LocationRecorder
     @Binding var cameraPosition: MapCameraPosition
     @Binding var hasCenteredInitially: Bool
+    @State private var isAlertLegendExpanded = false
     let showsAlertLegend: Bool
     let onToggleFullScreen: (() -> Void)?
+    private let maxGenericAlertAnnotations = 160
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -392,7 +394,7 @@ private struct RecordingMapView: View {
                     }
                 }
 
-                ForEach(recorder.mapAlerts, id: \.id) { alert in
+                ForEach(visibleMapAlerts, id: \.id) { alert in
                     let isPriority = priorityAlertIDs.contains(alert.id)
                     Annotation(
                         DriveEventFormatter.alertTypeText(alert.type),
@@ -464,7 +466,6 @@ private struct RecordingMapView: View {
                     }
                     .padding(16)
                 }
-                .allowsHitTesting(false)
             }
 
             if let onToggleFullScreen {
@@ -549,42 +550,113 @@ private struct RecordingMapView: View {
         Set(recorder.currentRoadContext?.alerts.map(\.id) ?? [])
     }
 
-    private var alertLegend: some View {
-        HStack(spacing: 12) {
-            legendItem(
-                title: "Sul percorso",
-                filled: true
-            )
+    private var visibleMapAlerts: [RoadAlert] {
+        let priorityIDs = priorityAlertIDs
+        var result: [RoadAlert] = []
+        var included = Set<String>()
 
-            Divider()
-                .frame(height: 18)
-
-            legendItem(
-                title: "Entro 10 km",
-                filled: false
-            )
+        for alert in recorder.mapAlerts where priorityIDs.contains(alert.id) {
+            result.append(alert)
+            included.insert(alert.id)
         }
+
+        for alert in recorder.mapAlerts where !included.contains(alert.id) {
+            guard result.count < maxGenericAlertAnnotations else { break }
+            result.append(alert)
+            included.insert(alert.id)
+        }
+
+        return result.sorted { lhs, rhs in
+            if priorityIDs.contains(lhs.id) != priorityIDs.contains(rhs.id) {
+                return priorityIDs.contains(lhs.id)
+            }
+            if lhs.distanceMeters == rhs.distanceMeters {
+                return lhs.id < rhs.id
+            }
+            return lhs.distanceMeters < rhs.distanceMeters
+        }
+    }
+
+    private var hiddenMapAlertCount: Int {
+        max(0, recorder.mapAlerts.count - visibleMapAlerts.count)
+    }
+
+    private var alertLegend: some View {
+        Button {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                isAlertLegendExpanded.toggle()
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    legendItem(
+                        title: "Sul percorso",
+                        systemImage: "camera.fill",
+                        color: .orange,
+                        filled: true
+                    )
+
+                    Divider()
+                        .frame(height: 18)
+
+                    legendItem(
+                        title: "Entro 10 km",
+                        systemImage: "exclamationmark.triangle.fill",
+                        color: .orange,
+                        filled: false
+                    )
+
+                    Image(systemName: isAlertLegendExpanded ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                if isAlertLegendExpanded {
+                    VStack(alignment: .leading, spacing: 6) {
+                        legendItem(title: "Autovelox / photored", systemImage: "camera.fill", color: .red, filled: true)
+                        legendItem(title: "Lavori", systemImage: "wrench.and.screwdriver.fill", color: .orange, filled: true)
+                        legendItem(title: "Chiusura", systemImage: "nosign", color: .orange, filled: true)
+                        legendItem(title: "Pericolo / incidente", systemImage: "car.side.rear.and.collision.and.car.side.front", color: .orange, filled: true)
+                        legendItem(title: "Polizia", systemImage: "shield.fill", color: .blue, filled: true)
+                        legendItem(title: "Accesso controllato", systemImage: "lock.fill", color: .blue, filled: true)
+                        legendItem(title: "Controllo peso", systemImage: "scalemass.fill", color: .blue, filled: true)
+                        legendItem(title: "Non operativo", systemImage: "exclamationmark.triangle.fill", color: .gray, filled: true)
+                        legendItem(title: "Posizione approssimativa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false, dashed: true)
+                        if hiddenMapAlertCount > 0 {
+                            Text("Mostrati \(visibleMapAlerts.count) di \(recorder.mapAlerts.count) alert")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+        }
+        .buttonStyle(.plain)
         .font(.caption2.weight(.semibold))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.35), lineWidth: 0.5))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.35), lineWidth: 0.5))
         .shadow(radius: 2, y: 1)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Alert pieni sul percorso; alert contornati entro dieci chilometri")
+        .accessibilityLabel("Legenda alert. Tocca per \(isAlertLegendExpanded ? "ridurre" : "espandere")")
     }
 
-    private func legendItem(title: String, filled: Bool) -> some View {
+    private func legendItem(title: String, systemImage: String, color: Color, filled: Bool, dashed: Bool = false) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: systemImage)
                 .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(filled ? Color.white : Color.orange)
+                .foregroundStyle(filled ? Color.white : color)
                 .frame(width: 18, height: 18)
                 .background {
-                    Circle().fill(filled ? Color.orange : Color.clear)
+                    Circle().fill(filled ? color : Color.clear)
                 }
                 .overlay {
-                    Circle().stroke(filled ? Color.white : Color.orange, lineWidth: 1.25)
+                    Circle().stroke(
+                        filled ? Color.white : color,
+                        style: StrokeStyle(lineWidth: 1.25, dash: dashed ? [3, 2] : [])
+                    )
                 }
 
             Text(title)
@@ -693,4 +765,3 @@ private struct RecordingMapView: View {
         }
     }
 }
-
