@@ -403,6 +403,19 @@ run_stage() {
   echo "{\"event\":\"valhalla_build_stage_finished\",\"start\":\"$start_stage\",\"end\":\"$end_stage\"}"
 }
 
+recover_corrupted_graph_tiles() {
+  local stage_log="$STATE_DIR/current-stage.log"
+  if ! grep -Eq 'Mismatch in end offset = .*Tile file might (me|be) corrupted' "$stage_log" 2>/dev/null; then
+    return 1
+  fi
+
+  echo '{"event":"valhalla_corrupted_graph_tiles_detected","action":"rebuild_downstream","preservedStage":"constructedges"}' >&2
+  rm -f "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+  echo '{"event":"valhalla_corrupted_graph_tiles_cleared","retryFrom":"build"}' >&2
+}
+
 if [[ ! -f "$STATE_DIR/constructedges.complete" ]]; then
   run_stage initialize constructedges constructedges.complete
 fi
@@ -410,7 +423,14 @@ if [[ ! -f "$STATE_DIR/build.complete" ]]; then
   run_stage build build build.complete
 fi
 if [[ ! -f "$STATE_DIR/cleanup.complete" ]]; then
-  run_stage enhance cleanup cleanup.complete
+  if ! run_stage enhance cleanup cleanup.complete; then
+    if [[ -f "$STATE_DIR/constructedges.complete" ]] && recover_corrupted_graph_tiles; then
+      run_stage build build build.complete
+      run_stage enhance cleanup cleanup.complete
+    else
+      exit 1
+    fi
+  fi
 fi
 
 if ! find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -print -quit | grep -q .; then

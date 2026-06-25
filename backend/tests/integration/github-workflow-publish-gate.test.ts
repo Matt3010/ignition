@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = path.resolve(import.meta.dirname, "../../..");
 
 async function readWorkflow(name: string): Promise<string> {
-  return readFile(path.join(repositoryRoot, ".github", "workflows", name), "utf8");
+  return (await readFile(
+    path.join(repositoryRoot, ".github", "workflows", name),
+    "utf8",
+  )).replaceAll("\r\n", "\n");
 }
 
 describe("GHCR publication gate", () => {
