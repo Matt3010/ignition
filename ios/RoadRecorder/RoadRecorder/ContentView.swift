@@ -1,12 +1,30 @@
 import MapKit
 import SwiftUI
 
+private struct RouteSpeedSegment: Identifiable {
+    let id: String
+    let start: CLLocationCoordinate2D
+    let end: CLLocationCoordinate2D
+    let speedKmh: Double
+    let speedLimitKmh: Int?
+
+    var color: Color {
+        guard let speedLimitKmh, speedLimitKmh > 0 else { return .blue }
+        let ratio = speedKmh / Double(speedLimitKmh)
+        if ratio >= 1 { return .red }
+        if ratio >= 0.9 { return .orange }
+        if ratio >= 0.75 { return .yellow }
+        return .green
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var recorder: LocationRecorder
     @FocusState private var backendFocused: Bool
     @State private var isMapFullScreen = false
     @State private var mapCameraPosition: MapCameraPosition = .automatic
     @State private var hasCenteredMapInitially = false
+    private var isActive: Bool { recorder.isRecording || recorder.isSimulating }
 
     var body: some View {
         NavigationStack {
@@ -23,13 +41,13 @@ struct ContentView: View {
                         HStack(spacing: 10) {
                             Button {
                                 backendFocused = false
-                                recorder.isRecording ? recorder.stopRecording() : recorder.startRecording()
+                                isActive ? recorder.stopRecording() : recorder.startRecording()
                             } label: {
-                                Label(recorder.isRecording ? "Stop" : "Start recording", systemImage: recorder.isRecording ? "stop.fill" : "location.fill")
+                                Label(isActive ? "Stop" : "Start recording", systemImage: isActive ? "stop.fill" : "location.fill")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(!recorder.canStartRecording)
+                            .disabled(!recorder.canStartRecording && !recorder.isSimulating)
 
                             Button {
                                 recorder.clearEvents()
@@ -76,9 +94,17 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(recorder.savedSessions) { session in
-                            SavedSessionRow(session: session) {
-                                recorder.deleteSavedSession(session)
-                            }
+                            SavedSessionRow(
+                                session: session,
+                                canSimulate: !recorder.isRecording && !recorder.isSimulating,
+                                onSimulate: {
+                                    hasCenteredMapInitially = false
+                                    recorder.simulateSavedSession(session)
+                                },
+                                onDelete: {
+                                    recorder.deleteSavedSession(session)
+                                }
+                            )
                         }
                     }
                 }
@@ -98,9 +124,9 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Circle()
-                        .fill(recorder.isRecording ? Color.green : Color.secondary)
+                        .fill(recorder.isRecording ? Color.green : recorder.isSimulating ? Color.orange : Color.secondary)
                         .frame(width: 12, height: 12)
-                        .accessibilityLabel(recorder.isRecording ? "Recording" : "Stopped")
+                        .accessibilityLabel(recorder.isRecording ? "Recording" : recorder.isSimulating ? "Simulating" : "Stopped")
                 }
             }
         }
@@ -117,6 +143,8 @@ struct ContentView: View {
 
 private struct SavedSessionRow: View {
     let session: SavedSessionSummary
+    let canSimulate: Bool
+    let onSimulate: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -130,6 +158,14 @@ private struct SavedSessionRow: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button(action: onSimulate) {
+                    Image(systemName: "play.fill")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canSimulate)
+                .accessibilityLabel("Simula sessione salvata")
+
                 ShareLink(item: session.fileURL) {
                     Image(systemName: "square.and.arrow.down")
                         .frame(width: 34, height: 34)
@@ -348,6 +384,7 @@ private struct RecordingMapView: View {
     @Binding var cameraPosition: MapCameraPosition
     @Binding var hasCenteredInitially: Bool
     @State private var isAlertLegendExpanded = false
+    @State private var followsDriver = false
     let showsAlertLegend: Bool
     let mapActionSystemImage: String
     let mapActionAccessibilityLabel: String
@@ -365,7 +402,12 @@ private struct RecordingMapView: View {
                         .stroke(.blue.opacity(0.45), lineWidth: 1)
                 }
 
-                if smoothedRouteCoordinates.count >= 2 {
+                if !routeSpeedSegments.isEmpty {
+                    ForEach(routeSpeedSegments) { segment in
+                        MapPolyline(coordinates: [segment.start, segment.end])
+                            .stroke(segment.color, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                    }
+                } else if smoothedRouteCoordinates.count >= 2 {
                     MapPolyline(coordinates: smoothedRouteCoordinates)
                         .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
                 }
@@ -380,13 +422,18 @@ private struct RecordingMapView: View {
                                 .background(.red, in: Circle())
                                 .overlay(Circle().stroke(.white, lineWidth: 2))
 
-                            Text("\(Int(violation.speedKmh.rounded()))/\(violation.speedLimitKmh)")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.red)
-                                .padding(.horizontal, 4)
-                                .background(.regularMaterial, in: Capsule())
+                            VStack(spacing: 1) {
+                                Text("+\(Int(violation.excessKmh.rounded())) km/h")
+                                    .font(.caption2.weight(.bold))
+                                Text("\(Int(violation.speedKmh.rounded())) su \(violation.speedLimitKmh)")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
                         }
-                        .accessibilityLabel("Limite superato: velocità \(Int(violation.speedKmh.rounded())) chilometri orari, limite \(violation.speedLimitKmh)")
+                        .accessibilityLabel("Limite superato di \(Int(violation.excessKmh.rounded())) chilometri orari")
                     }
                 }
 
@@ -473,6 +520,8 @@ private struct RecordingMapView: View {
                             Image(systemName: "location.fill")
                                 .font(.headline.weight(.semibold))
                                 .padding(12)
+                                .foregroundStyle(followsDriver ? Color.white : Color.primary)
+                                .background(followsDriver ? Color.blue : Color.clear, in: Circle())
                                 .background(.regularMaterial, in: Circle())
                         }
                         .buttonStyle(.plain)
@@ -494,7 +543,12 @@ private struct RecordingMapView: View {
             }
         }
         .onAppear(perform: centerOnCurrentPositionOnce)
-        .onChange(of: coordinateKey) { _, _ in centerOnCurrentPositionOnce() }
+        .onChange(of: coordinateKey) { _, _ in centerOnCurrentPositionForTracking() }
+        .onChange(of: cameraPosition.positionedByUser) { _, positionedByUser in
+            if positionedByUser {
+                followsDriver = false
+            }
+        }
     }
 
     private var mapStatusOverlay: some View {
@@ -506,6 +560,12 @@ private struct RecordingMapView: View {
                 Label("Precisione \(accuracyText)", systemImage: "location.circle")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                if let currentLimitExcessText {
+                    Label(currentLimitExcessText, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                }
                 if recorder.currentRoadContext?.alertsStatus == "unavailable" {
                     Label("Alert non disponibili", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2.weight(.semibold))
@@ -522,25 +582,41 @@ private struct RecordingMapView: View {
 
             Spacer(minLength: 4)
 
-            speedLimitBadge
+            speedBadge
         }
     }
 
-    private var speedLimitBadge: some View {
+    private var speedBadge: some View {
         ZStack {
             Circle().fill(.white)
             Circle().stroke(limitBadgeColor, lineWidth: 5)
-            Text(recorder.currentRoadContext?.speedLimitKmh.map(String.init) ?? "—")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(.black)
+            VStack(spacing: -2) {
+                Text("\(Int(recorder.currentSpeedKmh.rounded()))")
+                    .font(.headline.weight(.bold))
+                Text(speedBadgeDetailText)
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.black)
         }
         .frame(width: 54, height: 54)
         .shadow(radius: 2)
-        .accessibilityLabel("Limite corrente \(recorder.currentRoadContext?.speedLimitKmh.map { "\($0) chilometri orari" } ?? "non disponibile")")
+        .accessibilityLabel(speedBadgeAccessibilityLabel)
+    }
+
+    private var speedBadgeDetailText: String {
+        recorder.currentRoadContext?.speedLimitKmh.map { "/\($0)" } ?? "km/h"
+    }
+
+    private var speedBadgeAccessibilityLabel: String {
+        let speed = "Velocità corrente \(Int(recorder.currentSpeedKmh.rounded())) chilometri orari"
+        guard let limit = recorder.currentRoadContext?.speedLimitKmh else {
+            return "\(speed), limite non disponibile"
+        }
+        return "\(speed), limite \(limit) chilometri orari"
     }
 
     private var limitBadgeColor: Color {
-        guard let limit = recorder.currentRoadContext?.speedLimitKmh, limit > 0 else { return .secondary }
+        guard let limit = recorder.currentRoadContext?.speedLimitKmh, limit > 0 else { return .blue }
         return recorder.currentSpeedKmh > Double(limit) ? .red : .green
     }
 
@@ -551,6 +627,29 @@ private struct RecordingMapView: View {
 
     private var nearestAlert: RoadAlert? {
         recorder.currentRoadContext?.alerts.min { $0.distanceMeters < $1.distanceMeters }
+    }
+
+    private var currentLimitExcessText: String? {
+        guard let limit = recorder.currentRoadContext?.speedLimitKmh else { return nil }
+        let excess = recorder.currentSpeedKmh - Double(limit)
+        guard excess > 0 else { return nil }
+        return "Sopra limite di \(Int(excess.rounded())) km/h"
+    }
+
+    private var routeSpeedSegments: [RouteSpeedSegment] {
+        let points = recorder.routePoints
+        guard points.count >= 2 else { return [] }
+        return points.indices.dropFirst().map { index in
+            let previous = points[index - 1]
+            let current = points[index]
+            return RouteSpeedSegment(
+                id: "\(previous.id.uuidString)-\(current.id.uuidString)",
+                start: previous.coordinate,
+                end: current.coordinate,
+                speedKmh: current.speedKmh,
+                speedLimitKmh: current.speedLimitKmh
+            )
+        }
     }
 
     private var visibleMapAlerts: [RoadAlert] {
@@ -768,8 +867,26 @@ private struct RecordingMapView: View {
         setCamera(center: coordinate, meters: 1_500)
     }
 
+    private func centerOnCurrentPositionForTracking() {
+        if followsDriver {
+            centerOnCurrentPosition(animated: true)
+        } else {
+            centerOnCurrentPositionOnce()
+        }
+    }
+
     private func centerOnCurrentPosition() {
+        followsDriver = true
+        centerOnCurrentPosition(animated: true)
+    }
+
+    private func centerOnCurrentPosition(animated: Bool) {
         guard let coordinate = recorder.currentCoordinate else { return }
+        hasCenteredInitially = true
+        guard animated else {
+            setCamera(center: coordinate, meters: 500)
+            return
+        }
         withAnimation(.easeInOut(duration: 0.25)) {
             setCamera(center: coordinate, meters: 500)
         }

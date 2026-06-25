@@ -32,6 +32,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     }
 
     @Published private(set) var isRecording = false
+    @Published private(set) var isSimulating = false
     @Published private(set) var statusText = "Pronto"
     @Published private(set) var sessionId = UUID()
     @Published private(set) var sentCount = 0
@@ -61,6 +62,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     private var currentSessionEvents: [RecorderEvent] = []
     private var mapAlertsById: [String: RoadAlert] = [:]
     private var activeSendTask: Task<Void, Never>?
+    private var activeSimulationTask: Task<Void, Never>?
     private var pendingLocation: CLLocation?
     private var activeRequestToken: UUID?
     private var sessionGeneration = UUID()
@@ -70,7 +72,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     private let minimumSendInterval: TimeInterval = 1.2
 
     var canStartRecording: Bool {
-        isRecording || validatedBackendURL != nil
+        isRecording || (!isSimulating && validatedBackendURL != nil)
     }
 
     override init() {
@@ -96,6 +98,9 @@ final class LocationRecorder: NSObject, ObservableObject {
         }
 
         activeSendTask?.cancel()
+        activeSimulationTask?.cancel()
+        activeSimulationTask = nil
+        isSimulating = false
         sessionGeneration = UUID()
         sessionId = UUID()
         archiveRevision = 0
@@ -155,6 +160,10 @@ final class LocationRecorder: NSObject, ObservableObject {
     }
 
     func stopRecording() {
+        if isSimulating {
+            stopSimulation()
+            return
+        }
         finishCurrentSession(
             status: "Fermo",
             logKind: "session_stop",
@@ -217,6 +226,42 @@ final class LocationRecorder: NSObject, ObservableObject {
                 statusText = "Errore eliminazione sessione"
             }
         }
+    }
+
+    func simulateSavedSession(_ session: SavedSessionSummary) {
+        guard !isRecording, !isSimulating, let backendURL = validatedBackendURL else {
+            if validatedBackendURL == nil {
+                statusText = "Backend URL richiesto"
+            }
+            return
+        }
+        activeSimulationTask?.cancel()
+        activeSimulationTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                let archive = try await self.sessionStore.load(session)
+                try await self.replaySavedSession(archive, fileURL: session.fileURL, backendURL: backendURL)
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.statusText = "Simulazione interrotta"
+                    self?.isSimulating = false
+                    self?.activeSimulationTask = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self?.statusText = "Errore simulazione sessione"
+                    self?.isSimulating = false
+                    self?.activeSimulationTask = nil
+                }
+            }
+        }
+    }
+
+    func stopSimulation() {
+        activeSimulationTask?.cancel()
+        activeSimulationTask = nil
+        isSimulating = false
+        statusText = "Simulazione interrotta"
     }
 
     private func beginLocationUpdates() {
@@ -320,6 +365,25 @@ final class LocationRecorder: NSObject, ObservableObject {
         }
     }
 
+    private func updateMapLocation(from sample: RoadContextSample) {
+        let coordinate = CLLocationCoordinate2D(latitude: sample.latitude, longitude: sample.longitude)
+        currentCoordinate = coordinate
+        currentSpeedKmh = sample.speedKmh
+        currentCourseDegrees = sample.course
+        currentHorizontalAccuracyMeters = sample.horizontalAccuracyMeters
+
+        if let last = routeCoordinates.last {
+            let previous = CLLocation(latitude: last.latitude, longitude: last.longitude)
+            let current = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            guard current.distance(from: previous) >= 3 else { return }
+        }
+
+        routeCoordinates.append(coordinate)
+        if routeCoordinates.count > 5_000 {
+            routeCoordinates.removeFirst(routeCoordinates.count - 5_000)
+        }
+    }
+
     private func updateSpeedTrace(from event: RecorderEvent) {
         guard event.errorMessage == nil else { return }
 
@@ -382,6 +446,169 @@ final class LocationRecorder: NSObject, ObservableObject {
             }
             return lhs.distanceMeters < rhs.distanceMeters
         }
+    }
+
+    private func resetForSimulation(_ archive: RecorderSessionArchive, fileURL: URL, replaySessionId: UUID) {
+        activeSendTask?.cancel()
+        activeSendTask = nil
+        activeRequestToken = nil
+        pendingLocation = nil
+        manager.stopUpdatingLocation()
+
+        isRecording = false
+        isSimulating = true
+        sessionGeneration = UUID()
+        sessionId = replaySessionId
+        sentCount = 0
+        errorCount = 0
+        currentSessionFileURL = fileURL
+        currentSessionArchive = nil
+        currentSessionEvents = []
+        lastSentLocation = nil
+        lastSentAt = nil
+        currentCoordinate = nil
+        currentSpeedKmh = 0
+        currentCourseDegrees = nil
+        currentHorizontalAccuracyMeters = nil
+        currentRoadContext = nil
+        routeCoordinates = []
+        routePoints = []
+        speedViolationPoints = []
+        mapAlerts = []
+        mapAlertsById = [:]
+        events = []
+        lastAccuracyText = "n/d"
+        statusText = archive.events.isEmpty ? "Sessione vuota" : "Simulazione in corso"
+    }
+
+    private func replaySavedSession(
+        _ archive: RecorderSessionArchive,
+        fileURL: URL,
+        backendURL: URL
+    ) async throws {
+        let replaySessionId = UUID()
+        resetForSimulation(archive, fileURL: fileURL, replaySessionId: replaySessionId)
+
+        guard let firstEvent = archive.events.first else {
+            isSimulating = false
+            activeSimulationTask = nil
+            return
+        }
+
+        let originalStart = date(from: firstEvent.sample.timestamp) ?? Date()
+        let replayStart = Date()
+
+        for (index, originalEvent) in archive.events.enumerated() {
+            try Task.checkCancellation()
+            if let originalDate = date(from: originalEvent.sample.timestamp) {
+                let targetDelay = max(0, originalDate.timeIntervalSince(originalStart))
+                let elapsed = Date().timeIntervalSince(replayStart)
+                if targetDelay > elapsed {
+                    try await Task.sleep(nanoseconds: UInt64((targetDelay - elapsed) * 1_000_000_000))
+                }
+            }
+
+            let sample = replaySample(
+                from: originalEvent.sample,
+                timestamp: rebasedTimestamp(
+                    originalTimestamp: originalEvent.sample.timestamp,
+                    originalStart: originalStart,
+                    replayStart: replayStart
+                ),
+                sessionId: replaySessionId
+            )
+
+            updateMapLocation(from: sample)
+            statusText = "Simulazione \(index + 1)/\(archive.events.count)"
+            let requestStartedAtDate = Date()
+            let requestStartedAt = isoFormatter.string(from: requestStartedAtDate)
+
+            do {
+                let result = try await client.send(sample: sample, backendBaseURL: backendURL)
+                try Task.checkCancellation()
+                let endedAtDate = Date()
+                sentCount += 1
+                let event = RecorderEvent(
+                    sample: sample,
+                    response: result.response,
+                    errorMessage: nil,
+                    requestStartedAt: requestStartedAt,
+                    requestEndedAt: isoFormatter.string(from: endedAtDate),
+                    latencyMs: endedAtDate.timeIntervalSince(requestStartedAtDate) * 1000,
+                    httpStatusCode: result.httpStatusCode
+                )
+                applyReplayEvent(event)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                let endedAtDate = Date()
+                errorCount += 1
+                let httpStatusCode: Int?
+                if case RoadContextClientError.http(let status, _) = error {
+                    httpStatusCode = status
+                } else {
+                    httpStatusCode = nil
+                }
+                applyReplayEvent(RecorderEvent(
+                    sample: sample,
+                    response: nil,
+                    errorMessage: error.localizedDescription,
+                    requestStartedAt: requestStartedAt,
+                    requestEndedAt: isoFormatter.string(from: endedAtDate),
+                    latencyMs: endedAtDate.timeIntervalSince(requestStartedAtDate) * 1000,
+                    httpStatusCode: httpStatusCode
+                ))
+            }
+        }
+
+        isSimulating = false
+        activeSimulationTask = nil
+        statusText = "Simulazione completata"
+    }
+
+    private func applyReplayEvent(_ event: RecorderEvent) {
+        if let response = event.response {
+            currentRoadContext = response
+        }
+        updateMapAlerts(from: event.response)
+        updateSpeedTrace(from: event)
+        currentSessionEvents.append(event)
+        events.insert(event, at: 0)
+        if events.count > 80 {
+            events.removeLast(events.count - 80)
+        }
+        lastAccuracyText = "\(Int(event.sample.horizontalAccuracyMeters.rounded())) m"
+    }
+
+    private func replaySample(
+        from sample: RoadContextSample,
+        timestamp: String,
+        sessionId: UUID
+    ) -> RoadContextSample {
+        RoadContextSample(
+            latitude: sample.latitude,
+            longitude: sample.longitude,
+            speedKmh: sample.speedKmh,
+            course: sample.course,
+            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+            timestamp: timestamp,
+            sessionId: sessionId.uuidString
+        )
+    }
+
+    private func rebasedTimestamp(
+        originalTimestamp: String,
+        originalStart: Date,
+        replayStart: Date
+    ) -> String {
+        guard let originalDate = date(from: originalTimestamp) else {
+            return isoFormatter.string(from: Date())
+        }
+        return isoFormatter.string(from: replayStart.addingTimeInterval(originalDate.timeIntervalSince(originalStart)))
+    }
+
+    private func date(from timestamp: String) -> Date? {
+        isoFormatter.date(from: timestamp)
     }
 
     private func shouldSend(_ location: CLLocation) -> Bool {
@@ -687,6 +914,11 @@ private actor SessionArchiveStore {
     func delete(_ session: SavedSessionSummary) throws {
         try FileManager.default.removeItem(at: session.fileURL)
         latestRevisionBySession.removeValue(forKey: session.id)
+    }
+
+    func load(_ session: SavedSessionSummary) throws -> RecorderSessionArchive {
+        let data = try Data(contentsOf: session.fileURL)
+        return try decoder.decode(RecorderSessionArchive.self, from: data)
     }
 
     private func ensureDirectory() throws {
