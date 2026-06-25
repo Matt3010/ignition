@@ -67,6 +67,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     private var archiveRevision = 0
     private let maximumLocationAge: TimeInterval = 10
     private let maximumLocationFutureSkew: TimeInterval = 5
+    private let minimumSendInterval: TimeInterval = 1.2
 
     var canStartRecording: Bool {
         isRecording || validatedBackendURL != nil
@@ -384,7 +385,7 @@ final class LocationRecorder: NSObject, ObservableObject {
     }
 
     private func shouldSend(_ location: CLLocation) -> Bool {
-        if let lastSentAt, Date().timeIntervalSince(lastSentAt) < 1 {
+        if let lastSentAt, Date().timeIntervalSince(lastSentAt) < minimumSendInterval {
             return false
         }
         if let lastSentLocation, location.distance(from: lastSentLocation) < 2 {
