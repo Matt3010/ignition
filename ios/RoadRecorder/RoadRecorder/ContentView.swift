@@ -616,10 +616,11 @@ private struct RecordingMapView: View {
                         legendItem(title: "Autovelox / photored", systemImage: "camera.fill", color: .red, filled: true)
                         legendItem(title: "Lavori", systemImage: "wrench.and.screwdriver.fill", color: .orange, filled: true)
                         legendItem(title: "Chiusura", systemImage: "nosign", color: .orange, filled: true)
-                        legendItem(title: "Pericolo / incidente", systemImage: "car.side.rear.and.collision.and.car.side.front", color: .orange, filled: true)
+                        legendItem(title: "Pericolo stradale", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: true)
                         legendItem(title: "Polizia", systemImage: "shield.fill", color: .blue, filled: true)
                         legendItem(title: "Accesso controllato", systemImage: "lock.fill", color: .blue, filled: true)
                         legendItem(title: "Controllo peso", systemImage: "scalemass.fill", color: .blue, filled: true)
+                        legendItem(title: "Controllo generico", systemImage: "checkmark.shield.fill", color: .blue, filled: true)
                         legendItem(title: "Non operativo", systemImage: "exclamationmark.triangle.fill", color: .gray, filled: true)
                         legendItem(title: "Posizione precisa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false)
                         legendItem(title: "Posizione approssimativa", systemImage: "exclamationmark.triangle.fill", color: .orange, filled: false, dashed: true)
@@ -711,9 +712,9 @@ private struct RecordingMapView: View {
     private func alertColor(_ alert: RoadAlert) -> Color {
         if alert.operationalStatus == "notOperational" || alert.active == false { return .gray }
         switch alert.type {
-        case "fixedSpeedCamera", "averageSpeedCamera", "mobileSpeedCamera", "redLightCamera": return .red
+        case "fixedSpeedCamera", "averageSpeedCamera", "redLightCamera": return .red
         case "roadWorks", "roadClosure": return .orange
-        case "policeControl": return .blue
+        case "accessControl", "weightControl", "genericEnforcement", "policeControl": return .blue
         default: return .orange
         }
     }
@@ -755,13 +756,14 @@ private struct RecordingMapView: View {
 
     private func symbolName(for type: String) -> String {
         switch type {
-        case "speed_camera", "speedCamera", "fixedSpeedCamera", "averageSpeedCamera", "mobileSpeedCamera", "redLightCamera": return "camera.fill"
+        case "speed_camera", "speedCamera", "fixedSpeedCamera", "averageSpeedCamera", "redLightCamera": return "camera.fill"
         case "road_works", "roadWorks": return "wrench.and.screwdriver.fill"
         case "roadClosure": return "nosign"
-        case "accident": return "car.side.rear.and.collision.and.car.side.front"
+        case "roadHazard": return "exclamationmark.triangle.fill"
         case "police_control", "policeControl": return "shield.fill"
         case "accessControl": return "lock.fill"
         case "weightControl": return "scalemass.fill"
+        case "genericEnforcement": return "checkmark.shield.fill"
         default: return "exclamationmark.triangle.fill"
         }
     }

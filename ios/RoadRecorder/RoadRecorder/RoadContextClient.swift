@@ -254,17 +254,14 @@ enum DriveEventFormatter {
         switch type {
         case "fixedSpeedCamera": return "autovelox fisso"
         case "averageSpeedCamera": return "controllo velocita media"
-        case "mobileSpeedCamera": return "autovelox mobile"
         case "redLightCamera": return "photored"
         case "accessControl": return "controllo accesso/ZTL"
         case "weightControl": return "controllo peso"
         case "genericEnforcement": return "controllo stradale"
         case "policeControl": return "controllo di polizia"
-        case "accident": return "incidente"
         case "roadHazard": return "pericolo stradale"
         case "roadWorks": return "lavori stradali"
         case "roadClosure": return "strada chiusa"
-        case "information": return "informazione"
         default: return type
         }
     }

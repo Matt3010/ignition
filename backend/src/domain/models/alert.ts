@@ -1,17 +1,14 @@
 export const alertTypes = [
   "fixedSpeedCamera",
   "averageSpeedCamera",
-  "mobileSpeedCamera",
   "redLightCamera",
   "accessControl",
   "weightControl",
   "genericEnforcement",
   "policeControl",
-  "accident",
   "roadHazard",
   "roadWorks",
   "roadClosure",
-  "information",
 ] as const;
 
 export type AlertType = (typeof alertTypes)[number];
