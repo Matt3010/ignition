@@ -21,6 +21,7 @@ VALHALLA_TIMEZONE_RELEASE_API_URL="${VALHALLA_TIMEZONE_RELEASE_API_URL:-https://
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
 json_number() { [[ "$1" =~ ^[0-9]+$ ]] && printf '%s' "$1" || printf '0'; }
+json_string() { node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? ""))' "$1"; }
 resolve_host_bind_path() {
   local container_path="$1" fallback_path="$2" mounts type source destination suffix best_destination="" resolved=""
 
@@ -403,9 +404,26 @@ start_progress_monitor() {
       bytes="$(du -sb "$VALHALLA_TILE_DIR_ABS" 2>/dev/null | awk '{print $1}')"
       files="$(find "$VALHALLA_TILE_DIR_ABS" -type f 2>/dev/null | wc -l | tr -d ' ')"
       graph_tiles="$(find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' 2>/dev/null | wc -l | tr -d ' ')"
+      recent_since=$(( local_now - (VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS * 2) ))
+      recent_graph_tiles="$(find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -newermt "@$recent_since" 2>/dev/null | wc -l | tr -d ' ')"
+      latest_graph_tile="$(find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -printf '%T@ %s %p\n' 2>/dev/null | sort -nr | head -1)"
+      latest_graph_tile_path=""
+      latest_graph_tile_bytes=0
+      latest_graph_tile_age=0
+      if [[ -n "$latest_graph_tile" ]]; then
+        latest_graph_tile_epoch="${latest_graph_tile%% *}"
+        latest_graph_tile_rest="${latest_graph_tile#* }"
+        latest_graph_tile_bytes="${latest_graph_tile_rest%% *}"
+        latest_graph_tile_path="${latest_graph_tile_rest#* }"
+        latest_graph_tile_epoch_seconds="${latest_graph_tile_epoch%%.*}"
+        if [[ "$latest_graph_tile_epoch_seconds" =~ ^[0-9]+$ ]]; then
+          latest_graph_tile_age=$(( local_now - latest_graph_tile_epoch_seconds ))
+        fi
+      fi
+      log_bytes="$(wc -c < "$STATE_DIR/current-stage.log" 2>/dev/null | tr -d '[:space:]' || true)"
       manifest_tiles="$(sed -nE 's/.*Reading ([0-9]+) tiles.*/\1/p' "$STATE_DIR/current-stage.log" 2>/dev/null | tail -1)"
       manifest_tiles="${manifest_tiles:-0}"
-      echo "{\"event\":\"valhalla_build_progress\",\"start\":\"$start_stage\",\"end\":\"$end_stage\",\"elapsedSeconds\":$elapsed,\"stagingBytes\":$(json_number "${bytes:-0}"),\"files\":$(json_number "$files"),\"graphTiles\":$(json_number "$graph_tiles"),\"manifestTiles\":$(json_number "$manifest_tiles")}"
+      echo "{\"event\":\"valhalla_build_progress\",\"start\":\"$start_stage\",\"end\":\"$end_stage\",\"elapsedSeconds\":$elapsed,\"stagingBytes\":$(json_number "${bytes:-0}"),\"files\":$(json_number "$files"),\"graphTiles\":$(json_number "$graph_tiles"),\"recentGraphTiles\":$(json_number "$recent_graph_tiles"),\"latestGraphTile\":$(json_string "$latest_graph_tile_path"),\"latestGraphTileBytes\":$(json_number "$latest_graph_tile_bytes"),\"latestGraphTileAgeSeconds\":$(json_number "$latest_graph_tile_age"),\"logBytes\":$(json_number "${log_bytes:-0}"),\"manifestTiles\":$(json_number "$manifest_tiles")}"
     done
   ) &
   PROGRESS_PID=$!
@@ -509,12 +527,30 @@ reset_incomplete_constructedges_state() {
   echo '{"event":"valhalla_graph_staging_cleared","retryFrom":"initialize"}' >&2
 }
 
+cleanup_stage_was_interrupted() {
+  [[ -f "$STATE_DIR/build.complete" ]] &&
+    [[ ! -f "$STATE_DIR/cleanup.complete" ]] &&
+    grep -q 'Start stage = enhance End stage = cleanup' "$STATE_DIR/current-stage.log" 2>/dev/null
+}
+
+reset_interrupted_cleanup_state() {
+  echo '{"event":"valhalla_cleanup_state_incomplete","action":"rebuild_downstream","reason":"cleanup_stage_interrupted","preservedStage":"constructedges"}' >&2
+  rm -f "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -delete
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -depth -type d -empty -delete
+  mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+  echo '{"event":"valhalla_graph_tiles_cleared","retryFrom":"build","preservedIntermediates":true}' >&2
+}
+
 if [[ -f "$STATE_DIR/constructedges.complete" ]] && ! has_constructedges_intermediates; then
   reset_incomplete_constructedges_state
 fi
 
 if [[ ! -f "$STATE_DIR/constructedges.complete" ]]; then
   run_stage initialize constructedges constructedges.complete
+fi
+if cleanup_stage_was_interrupted; then
+  reset_interrupted_cleanup_state
 fi
 if [[ ! -f "$STATE_DIR/build.complete" ]]; then
   build_status=0

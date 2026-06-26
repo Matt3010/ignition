@@ -44,6 +44,15 @@ describe("OSM refresh resilience", () => {
     expect(script).toContain("osm_refresh_waiting");
   });
 
+  it("runs immediately at startup when a staged Valhalla refresh survived a reboot", () => {
+    const script = read("scripts/osm-refresh-loop.sh");
+
+    expect(script).toContain('VALHALLA_STAGING_TILE_DIR="${VALHALLA_STAGING_TILE_DIR:-${VALHALLA_TILE_DIR}.next}"');
+    expect(script).toContain("staging_tiles_are_pending");
+    expect(script).toContain("osm_refresh_pending_staging_detected");
+    expect(script).toContain('tiles_are_missing || staging_tiles_are_pending');
+  });
+
   it("persists OSM refresh logs to the reports directory", () => {
     const script = read("scripts/osm-refresh-loop.sh");
     const backendCompose = read("docker-compose.yml");

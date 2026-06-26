@@ -13,6 +13,7 @@ OSM_REFRESH_LOG_FILE="${OSM_REFRESH_LOG_FILE:-$OSM_REFRESH_LOG_DIR/osm-refresh.l
 OSM_REFRESH_LOG_MAX_BYTES="${OSM_REFRESH_LOG_MAX_BYTES:-10000000}"
 OSM_REFRESH_LOG_MAX_FILES="${OSM_REFRESH_LOG_MAX_FILES:-5}"
 VALHALLA_TILE_DIR="${VALHALLA_TILE_DIR:-./data/valhalla}"
+VALHALLA_STAGING_TILE_DIR="${VALHALLA_STAGING_TILE_DIR:-${VALHALLA_TILE_DIR}.next}"
 
 rotate_log_file() {
   local file="$1" max_bytes="$2" max_files="$3"
@@ -78,6 +79,10 @@ tiles_are_missing() {
   [[ ! -f "$VALHALLA_TILE_DIR/valhalla.json" || ! -d "$VALHALLA_TILE_DIR/valhalla_tiles" ]]
 }
 
+staging_tiles_are_pending() {
+  [[ -d "$VALHALLA_STAGING_TILE_DIR" ]]
+}
+
 run_alert_integrity_check() {
   local status
   if npm run alerts:ensure; then
@@ -101,7 +106,10 @@ run_alert_integrity_check() {
 }
 
 now="$(date +%s)"
-if [[ "$OSM_REFRESH_RUN_ON_START" == "true" ]] || tiles_are_missing; then
+if [[ "$OSM_REFRESH_RUN_ON_START" == "true" ]] || tiles_are_missing || staging_tiles_are_pending; then
+  if staging_tiles_are_pending; then
+    echo "{\"event\":\"osm_refresh_pending_staging_detected\",\"path\":\"$VALHALLA_STAGING_TILE_DIR\",\"action\":\"run_refresh\"}"
+  fi
   next_refresh_at=0
 else
   next_refresh_at=$(( now + OSM_REFRESH_INTERVAL_SECONDS ))

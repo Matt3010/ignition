@@ -88,6 +88,15 @@ cleanup_core_dumps
     expect(script).toContain('"$VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY"');
   });
 
+  it("emits filesystem activity in progress logs for quiet Valhalla stages", () => {
+    expect(script).toContain("recentGraphTiles");
+    expect(script).toContain("latestGraphTile");
+    expect(script).toContain("latestGraphTileBytes");
+    expect(script).toContain("latestGraphTileAgeSeconds");
+    expect(script).toContain("logBytes");
+    expect(script).toContain("-newermt");
+  });
+
   it("removes only graph tiles and preserves constructedges intermediates", () => {
     const root = mkdtempSync(join(tmpdir(), "valhalla-corruption-"));
     const stateDir = join(root, ".build-state");
@@ -220,6 +229,47 @@ if ! has_constructedges_intermediates; then reset_incomplete_constructedges_stat
     expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
     expect(() => readFileSync(join(stateDir, "cleanup.complete"))).toThrow();
     expect(() => readFileSync(join(tileDir, "stale.gph"))).toThrow();
+  });
+
+  it("rebuilds downstream graph tiles after an interrupted cleanup stage", () => {
+    const root = mkdtempSync(join(tmpdir(), "valhalla-interrupted-cleanup-"));
+    const stateDir = join(root, ".build-state");
+    const tileDir = join(root, "valhalla_tiles");
+    const nestedTileDir = join(tileDir, "2", "001");
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(nestedTileDir, { recursive: true });
+
+    writeFileSync(join(stateDir, "constructedges.complete"), "");
+    writeFileSync(join(stateDir, "build.complete"), "");
+    writeFileSync(join(stateDir, "current-stage.log"), "Start stage = enhance End stage = cleanup\n");
+    writeFileSync(join(tileDir, "ways.bin"), "ways");
+    writeFileSync(join(tileDir, "osmdata_counts.bin"), "counts");
+    writeFileSync(join(tileDir, "way_nodes.bin"), "nodes");
+    writeFileSync(join(nestedTileDir, "partial.gph"), "partial");
+
+    const helpers = script.match(
+      /cleanup_stage_was_interrupted\(\) \{[\s\S]*?\n\}\n\nreset_interrupted_cleanup_state\(\) \{[\s\S]*?\n\}/,
+    );
+    if (!helpers) {
+      throw new Error("interrupted cleanup helpers not found");
+    }
+
+    const harness = `set -euo pipefail
+STATE_DIR="$1"
+VALHALLA_TILE_DIR_ABS="$2"
+${helpers[0]}
+if cleanup_stage_was_interrupted; then reset_interrupted_cleanup_state; fi
+`;
+    execFileSync("bash", ["-c", harness, "bash", bashPath(stateDir), bashPath(root)], {
+      stdio: "pipe",
+    });
+
+    expect(() => readFileSync(join(stateDir, "constructedges.complete"))).not.toThrow();
+    expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
+    expect(() => readFileSync(join(tileDir, "ways.bin"))).not.toThrow();
+    expect(() => readFileSync(join(tileDir, "osmdata_counts.bin"))).not.toThrow();
+    expect(() => readFileSync(join(tileDir, "way_nodes.bin"))).not.toThrow();
+    expect(() => readFileSync(join(nestedTileDir, "partial.gph"))).toThrow();
   });
 
   it("performs at most one automatic recovery attempt per invocation", () => {
