@@ -38,6 +38,19 @@ function coreDumpCleanupFunction(): string {
   return match[0];
 }
 
+function failedBuildRecoveryFunctions(): string {
+  const corruptedMatch = script.match(
+    /recover_corrupted_graph_tiles\(\) \{[\s\S]*?\n\}/,
+  );
+  const nativeMatch = script.match(
+    /recover_failed_build_stage\(\) \{[\s\S]*?\n\}/,
+  );
+  if (!corruptedMatch || !nativeMatch) {
+    throw new Error("build recovery functions not found");
+  }
+  return `${corruptedMatch[0]}\n\n${nativeMatch[0]}`;
+}
+
 describeWithBash("Valhalla graph-tile corruption recovery", () => {
   it("removes Valhalla core dumps without touching graph data", () => {
     const root = mkdtempSync(join(tmpdir(), "valhalla-core-dumps-"));
@@ -66,6 +79,13 @@ cleanup_core_dumps
     expect(script).toContain("Invalid tile data size = 0");
     expect(script).toContain("GraphTile NodeTransition index out of bounds");
     expect(script).toContain("Tile file might (me|be) corrupted");
+  });
+
+  it("passes an explicit Valhalla build concurrency when configured", () => {
+    expect(script).toContain('VALHALLA_BUILD_CONCURRENCY="${VALHALLA_BUILD_CONCURRENCY:-}"');
+    expect(script).toContain('concurrency_args=(-j "$stage_concurrency")');
+    expect(script).toMatch(/concurrency.*json_number.*stage_concurrency/);
+    expect(script).toContain('"$VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY"');
   });
 
   it("removes only graph tiles and preserves constructedges intermediates", () => {
@@ -128,6 +148,41 @@ cleanup_core_dumps
 
     expect(() => readFileSync(join(tileDir, "ways.bin"))).not.toThrow();
     expect(() => readFileSync(join(nestedTileDir, "corrupted.gph"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
+  });
+
+  it("recovers from a native Valhalla double-free build crash", () => {
+    const root = mkdtempSync(join(tmpdir(), "valhalla-native-crash-"));
+    const stateDir = join(root, ".build-state");
+    const tileDir = join(root, "valhalla_tiles");
+    const nestedTileDir = join(tileDir, "2", "001");
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(nestedTileDir, { recursive: true });
+
+    writeFileSync(join(stateDir, "current-stage.log"), "double free or corruption (out)\n");
+    writeFileSync(join(stateDir, "constructedges.complete"), "");
+    writeFileSync(join(stateDir, "build.complete"), "");
+    writeFileSync(join(tileDir, "ways.bin"), "ways");
+    writeFileSync(join(tileDir, "osmdata_counts.bin"), "counts");
+    writeFileSync(join(tileDir, "way_nodes.bin"), "nodes");
+    writeFileSync(join(nestedTileDir, "partial.gph"), "partial");
+
+    const harness = `set -euo pipefail
+STATE_DIR="$1"
+VALHALLA_TILE_DIR_ABS="$2"
+json_number() { [[ "$1" =~ ^[0-9]+$ ]] && printf '%s' "$1" || printf '0'; }
+${failedBuildRecoveryFunctions()}
+recover_failed_build_stage 133 1
+`;
+    execFileSync("bash", ["-c", harness, "bash", bashPath(stateDir), bashPath(root)], {
+      stdio: "pipe",
+    });
+
+    expect(() => readFileSync(join(tileDir, "ways.bin"))).not.toThrow();
+    expect(() => readFileSync(join(tileDir, "osmdata_counts.bin"))).not.toThrow();
+    expect(() => readFileSync(join(tileDir, "way_nodes.bin"))).not.toThrow();
+    expect(() => readFileSync(join(nestedTileDir, "partial.gph"))).toThrow();
+    expect(() => readFileSync(join(stateDir, "constructedges.complete"))).not.toThrow();
     expect(() => readFileSync(join(stateDir, "build.complete"))).toThrow();
   });
 

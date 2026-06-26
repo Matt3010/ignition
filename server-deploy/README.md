@@ -108,6 +108,13 @@ actually embedded.
 
 Progress is logged every 60 seconds by default. Override it in `.env` with
 `VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS` using a positive integer value.
+Set `VALHALLA_BUILD_CONCURRENCY=1` on Raspberry Pi deployments when building
+large extracts such as Italy. This passes `-j 1` to `valhalla_build_tiles`; it
+is slower, but avoids native Valhalla heap crashes seen late in the parallel
+tile build. If a native crash is still detected, maintenance clears only the
+partial `.gph` graph tiles and retries the build stage once with
+`VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY`, preserving the expensive
+`constructedges` intermediates.
 After activation, maintenance verifies that Valhalla reports `has_tiles`,
 `has_admins`, and `has_timezones`; an incomplete tileset is rolled back.
 

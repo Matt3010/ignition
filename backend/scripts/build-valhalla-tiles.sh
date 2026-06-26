@@ -9,6 +9,8 @@ VALHALLA_BUILD_HOST_TILE_DIR="${VALHALLA_BUILD_HOST_TILE_DIR:-}"
 VALHALLA_DOCKER_IMAGE="${VALHALLA_DOCKER_IMAGE:-ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1}"
 VALHALLA_DOCKER_PLATFORM="${VALHALLA_DOCKER_PLATFORM:-linux/arm64/v8}"
 VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS="${VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS:-60}"
+VALHALLA_BUILD_CONCURRENCY="${VALHALLA_BUILD_CONCURRENCY:-}"
+VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY="${VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY:-1}"
 VALHALLA_TIMEZONE_RELEASE="${VALHALLA_TIMEZONE_RELEASE:-2026b}"
 VALHALLA_TIMEZONE_ASSET_NAME="${VALHALLA_TIMEZONE_ASSET_NAME:-timezones-with-oceans.shapefile.zip}"
 VALHALLA_TIMEZONE_OFFICIAL_ARCHIVE_URL="https://github.com/evansiroky/timezone-boundary-builder/releases/download/${VALHALLA_TIMEZONE_RELEASE}/${VALHALLA_TIMEZONE_ASSET_NAME}"
@@ -145,6 +147,14 @@ ADMIN_DATABASE_CHANGED=false
 
 if ! [[ "$VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
   echo "VALHALLA_BUILD_PROGRESS_INTERVAL_SECONDS must be a positive integer" >&2
+  exit 64
+fi
+if [[ -n "$VALHALLA_BUILD_CONCURRENCY" ]] && ! [[ "$VALHALLA_BUILD_CONCURRENCY" =~ ^[1-9][0-9]*$ ]]; then
+  echo "VALHALLA_BUILD_CONCURRENCY must be a positive integer when set" >&2
+  exit 64
+fi
+if ! [[ "$VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY" =~ ^[1-9][0-9]*$ ]]; then
+  echo "VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY must be a positive integer" >&2
   exit 64
 fi
 
@@ -414,9 +424,14 @@ emit_warning_summary() {
 
 run_stage() {
   local start_stage="$1" end_stage="$2" marker="$3"
+  local stage_concurrency="${4:-$VALHALLA_BUILD_CONCURRENCY}"
   local stage_log="$STATE_DIR/current-stage.log"
+  local concurrency_args=()
+  if [[ -n "$stage_concurrency" ]]; then
+    concurrency_args=(-j "$stage_concurrency")
+  fi
   : > "$stage_log"
-  echo "{\"event\":\"valhalla_build_stage_started\",\"start\":\"$start_stage\",\"end\":\"$end_stage\"}"
+  echo "{\"event\":\"valhalla_build_stage_started\",\"start\":\"$start_stage\",\"end\":\"$end_stage\",\"concurrency\":$(json_number "${stage_concurrency:-0}")}"
   BUILD_CONTAINER_RUNNING=true
   start_progress_monitor "$start_stage" "$end_stage" "$(date +%s)"
   set +e
@@ -429,6 +444,7 @@ run_stage() {
     "$VALHALLA_DOCKER_IMAGE" \
     -c /custom_files/valhalla.json \
     -s "$start_stage" -e "$end_stage" \
+    "${concurrency_args[@]}" \
     "${inputs[@]}" 2>&1 | tee "$stage_log"
   stage_status=${PIPESTATUS[0]}
   set -e
@@ -458,6 +474,26 @@ recover_corrupted_graph_tiles() {
   echo '{"event":"valhalla_corrupted_graph_tiles_cleared","retryFrom":"build","preservedIntermediates":true}' >&2
 }
 
+recover_failed_build_stage() {
+  local exit_code="$1" retry_concurrency="$2"
+  local stage_log="$STATE_DIR/current-stage.log"
+
+  if recover_corrupted_graph_tiles; then
+    return 0
+  fi
+
+  if ! grep -Eiq 'double free or corruption|corrupted double-linked list|malloc\(\)|free\(\)|invalid pointer|SIGABRT|Aborted' "$stage_log" 2>/dev/null; then
+    return 1
+  fi
+
+  echo "{\"event\":\"valhalla_native_build_crash_detected\",\"exitCode\":$(json_number "$exit_code"),\"action\":\"rebuild_downstream\",\"retryConcurrency\":$(json_number "$retry_concurrency")}" >&2
+  rm -f "$STATE_DIR/build.complete" "$STATE_DIR/cleanup.complete"
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -type f -name '*.gph' -delete
+  find "$VALHALLA_TILE_DIR_ABS/valhalla_tiles" -depth -type d -empty -delete
+  mkdir -p "$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
+  echo "{\"event\":\"valhalla_native_build_crash_recovery_prepared\",\"retryFrom\":\"build\",\"retryConcurrency\":$(json_number "$retry_concurrency"),\"preservedIntermediates\":true}" >&2
+}
+
 has_constructedges_intermediates() {
   local tile_dir="$VALHALLA_TILE_DIR_ABS/valhalla_tiles"
   [[ -s "$tile_dir/ways.bin" ]] &&
@@ -481,7 +517,15 @@ if [[ ! -f "$STATE_DIR/constructedges.complete" ]]; then
   run_stage initialize constructedges constructedges.complete
 fi
 if [[ ! -f "$STATE_DIR/build.complete" ]]; then
-  run_stage build build build.complete
+  build_status=0
+  run_stage build build build.complete "$VALHALLA_BUILD_CONCURRENCY" || build_status=$?
+  if (( build_status != 0 )); then
+    if [[ -f "$STATE_DIR/constructedges.complete" ]] && recover_failed_build_stage "$build_status" "$VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY"; then
+      run_stage build build build.complete "$VALHALLA_BUILD_CRASH_RETRY_CONCURRENCY"
+    else
+      exit "$build_status"
+    fi
+  fi
 fi
 if [[ ! -f "$STATE_DIR/cleanup.complete" ]]; then
   if ! run_stage enhance cleanup cleanup.complete; then

@@ -49,12 +49,25 @@ describe("OSM refresh tile activation portability", () => {
     const metadataFailure = script.indexOf("valhalla_metadata");
     const previousCleanup = script.indexOf('remove_directory "$VALHALLA_PREVIOUS_TILE_DIR"');
     const failedCleanup = script.indexOf('remove_directory "$VALHALLA_FAILED_TILE_DIR"');
+    const osmExtractCleanup = script.lastIndexOf("cleanup_unconfigured_osm_extracts");
     const finished = script.indexOf("osm_refresh_finished");
 
     expect(metadataFailure).toBeGreaterThanOrEqual(0);
     expect(previousCleanup).toBeGreaterThan(metadataFailure);
     expect(failedCleanup).toBeGreaterThan(previousCleanup);
-    expect(finished).toBeGreaterThan(failedCleanup);
+    expect(osmExtractCleanup).toBeGreaterThan(failedCleanup);
+    expect(finished).toBeGreaterThan(osmExtractCleanup);
+  });
+
+  it("removes OSM extracts that are not part of the configured region set", async () => {
+    const script = await readFile(scriptPath, "utf8");
+
+    expect(script).toContain("cleanup_unconfigured_osm_extracts() {");
+    expect(script).toContain('"$OSM_DATA_DIR"/*.osm.pbf "$OSM_DATA_DIR"/*.alerts.osm');
+    expect(script).toContain('*.download.osm.pbf) stale_region="${basename%.download.osm.pbf}"');
+    expect(script).toContain('*.alerts.osm) stale_region="${basename%.alerts.osm}"');
+    expect(script).toContain('*.osm.pbf) stale_region="${basename%.osm.pbf}"');
+    expect(script).toContain("osm_unconfigured_extract_removed");
   });
 
 });

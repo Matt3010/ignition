@@ -36,6 +36,39 @@ prepared_osm_available() {
   return 0
 }
 
+cleanup_unconfigured_osm_extracts() {
+  local raw region file basename stale_region removed=0
+  declare -A configured_regions=()
+
+  IFS=',' read -r -a raw_regions <<< "$OSM_REGIONS"
+  for raw in "${raw_regions[@]}"; do
+    region="$(trim "$raw")"
+    [[ -n "$region" ]] || continue
+    configured_regions["$region"]=1
+  done
+
+  shopt -s nullglob
+  for file in "$OSM_DATA_DIR"/*.osm.pbf "$OSM_DATA_DIR"/*.alerts.osm; do
+    basename="$(basename "$file")"
+    case "$basename" in
+      *.download.osm.pbf) stale_region="${basename%.download.osm.pbf}" ;;
+      *.alerts.osm) stale_region="${basename%.alerts.osm}" ;;
+      *.osm.pbf) stale_region="${basename%.osm.pbf}" ;;
+      *) continue ;;
+    esac
+    [[ -n "${configured_regions[$stale_region]:-}" ]] && continue
+    if rm -f -- "$file"; then
+      removed=$((removed + 1))
+      echo "{\"event\":\"osm_unconfigured_extract_removed\",\"activeRegions\":\"$(json_escape "$OSM_REGION_LABEL")\",\"file\":\"$(json_escape "$file")\"}"
+    else
+      echo "{\"event\":\"osm_unconfigured_extract_remove_failed\",\"activeRegions\":\"$(json_escape "$OSM_REGION_LABEL")\",\"file\":\"$(json_escape "$file")\"}" >&2
+    fi
+  done
+  shopt -u nullglob
+
+  echo "{\"event\":\"osm_unconfigured_extract_cleanup_finished\",\"activeRegions\":\"$(json_escape "$OSM_REGION_LABEL")\",\"removed\":$removed}"
+}
+
 VALHALLA_TILE_DIR="$(absolute_path "$VALHALLA_TILE_DIR")"
 VALHALLA_STAGING_TILE_DIR="$(absolute_path "$VALHALLA_STAGING_TILE_DIR")"
 VALHALLA_PREVIOUS_TILE_DIR="$(absolute_path "$VALHALLA_PREVIOUS_TILE_DIR")"
@@ -321,4 +354,5 @@ fi
 
 remove_directory "$VALHALLA_PREVIOUS_TILE_DIR"
 remove_directory "$VALHALLA_FAILED_TILE_DIR"
+cleanup_unconfigured_osm_extracts
 echo "{\"event\":\"osm_refresh_finished\",\"region\":\"$OSM_REGION_LABEL\",\"tileDir\":\"$(json_escape "$VALHALLA_TILE_DIR")\",\"restartedValhalla\":true}"
