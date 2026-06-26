@@ -82,13 +82,16 @@ azzerato intenzionalmente e ricostruito.
 
 ### Percorsi host portabili per la build Valhalla
 
-Il percorso host usato dal container temporaneo di build viene risolto da Docker Compose con `${PWD}`:
+Il container `osm-refresh` avvia container temporanei Valhalla attraverso il Docker socket. Per montare correttamente `data/osm` e `data/valhalla.next` in quei container, lo script di build risolve il percorso host reale ispezionando i bind mount del container `osm-refresh`.
+
+Docker Compose passa ancora questi valori come fallback:
 
 ```yaml
+OSM_HOST_DATA_DIR: ${PWD}/data/osm
 VALHALLA_STAGING_BUILD_HOST_TILE_DIR: ${PWD}/data/valhalla.next
 ```
 
-Non impostare questa variabile nel file `.env`: un valore relativo come `./data/valhalla.next` verrebbe passato a `docker run -v` e interpretato come nome di volume. Avvia i comandi dalla directory che contiene il relativo `docker-compose.yml`; in questo modo il percorso assoluto viene calcolato automaticamente e il deploy resta portabile tra server diversi.
+Non impostare queste variabili nel file `.env`: un valore relativo come `./data/valhalla.next` verrebbe passato a `docker run -v` e interpretato come nome di volume. Avviare i comandi dalla directory che contiene `docker-compose.yml` resta la modalità consigliata, ma la build corregge automaticamente i path quando il compose è stato lanciato con `-f` da una directory superiore.
 
 ### Ripresa dopo un errore di build
 

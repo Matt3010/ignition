@@ -12,7 +12,7 @@ const composeFiles = [
 ];
 
 describe("portable host paths in Docker Compose", () => {
-  it.each(composeFiles)("resolves the Valhalla staging bind mount through PWD in %s", (file) => {
+  it.each(composeFiles)("keeps host path fallbacks for the Valhalla staging bind mount in %s", (file) => {
     const compose = readFileSync(file, "utf8");
 
     expect(compose).toContain(
@@ -20,6 +20,20 @@ describe("portable host paths in Docker Compose", () => {
     );
     expect(compose).not.toMatch(
       /VALHALLA_STAGING_BUILD_HOST_TILE_DIR:\s*\$\{VALHALLA_STAGING_BUILD_HOST_TILE_DIR/,
+    );
+  });
+
+  it("derives Docker-in-Docker host paths from the container bind mounts at runtime", () => {
+    const script = readFileSync(
+      resolve(backendRoot, "scripts/build-valhalla-tiles.sh"),
+      "utf8",
+    );
+
+    expect(script).toContain("resolve_host_bind_path() {");
+    expect(script).toContain("docker inspect --format");
+    expect(script).toContain('resolve_host_bind_path "$OSM_DATA_DIR_ABS" "$OSM_HOST_DATA_DIR"');
+    expect(script).toContain(
+      'resolve_host_bind_path "$VALHALLA_TILE_DIR_ABS" "$VALHALLA_BUILD_HOST_TILE_DIR"',
     );
   });
 

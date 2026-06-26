@@ -19,6 +19,36 @@ VALHALLA_TIMEZONE_RELEASE_API_URL="${VALHALLA_TIMEZONE_RELEASE_API_URL:-https://
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
 json_number() { [[ "$1" =~ ^[0-9]+$ ]] && printf '%s' "$1" || printf '0'; }
+resolve_host_bind_path() {
+  local container_path="$1" fallback_path="$2" mounts type source destination suffix best_destination="" resolved=""
+
+  # The graph builder starts sibling Docker containers through the host Docker
+  # socket. Host paths provided by Compose can be wrong when Compose is invoked
+  # with -f from another directory, so prefer the actual bind source.
+  if command -v docker >/dev/null 2>&1 && [[ -n "${HOSTNAME:-}" ]]; then
+    mounts="$(docker inspect --format '{{range .Mounts}}{{println .Type "\t" .Source "\t" .Destination}}{{end}}' "$HOSTNAME" 2>/dev/null || true)"
+    while IFS=$'\t' read -r type source destination; do
+      [[ "$type" == "bind" && -n "$source" && -n "$destination" ]] || continue
+      case "$container_path" in
+        "$destination"|"$destination"/*)
+          if (( ${#destination} > ${#best_destination} )); then
+            suffix="${container_path#"$destination"}"
+            resolved="${source}${suffix}"
+            best_destination="$destination"
+          fi
+          ;;
+      esac
+    done <<< "$mounts"
+  fi
+
+  if [[ -n "$resolved" ]]; then
+    printf '%s\n' "$resolved"
+  elif [[ -n "$fallback_path" ]]; then
+    printf '%s\n' "$fallback_path"
+  else
+    printf '%s\n' "$container_path"
+  fi
+}
 validate_sqlite() {
   local database="$1" result
   [[ -s "$database" ]] || return 1
@@ -100,8 +130,8 @@ cleanup_core_dumps() {
 
 OSM_DATA_DIR_ABS="$(absolute_path "$OSM_DATA_DIR")"
 VALHALLA_TILE_DIR_ABS="$(absolute_path "$VALHALLA_TILE_DIR")"
-OSM_MOUNT_DIR_ABS="${OSM_HOST_DATA_DIR:-$OSM_DATA_DIR_ABS}"
-VALHALLA_MOUNT_DIR_ABS="${VALHALLA_BUILD_HOST_TILE_DIR:-$VALHALLA_TILE_DIR_ABS}"
+OSM_MOUNT_DIR_ABS="$(resolve_host_bind_path "$OSM_DATA_DIR_ABS" "$OSM_HOST_DATA_DIR")"
+VALHALLA_MOUNT_DIR_ABS="$(resolve_host_bind_path "$VALHALLA_TILE_DIR_ABS" "$VALHALLA_BUILD_HOST_TILE_DIR")"
 STATE_DIR="$VALHALLA_TILE_DIR_ABS/.build-state"
 FINGERPRINT_FILE="$STATE_DIR/fingerprint"
 ADMIN_DB="$VALHALLA_TILE_DIR_ABS/admins.sqlite"
