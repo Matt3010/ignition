@@ -1,9 +1,10 @@
-import { access, readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { createPool } from "../src/infrastructure/database/postgres.js";
 import { PostgisAlertRepository } from "../src/infrastructure/repositories/postgis-alert-repository.js";
 import { PostgresImportLogRepository } from "../src/infrastructure/repositories/postgres-import-log-repository.js";
-import { parseOsmAlerts } from "../src/infrastructure/osm/osm-alert-parser.js";
+import { parseOsmAlertsFromReadable } from "../src/infrastructure/osm/osm-alert-parser.js";
 import { loadConfig } from "../src/config/env.js";
 
 interface CliOptions {
@@ -20,12 +21,13 @@ const alertRepository = new PostgisAlertRepository(pool);
 const importRepository = new PostgresImportLogRepository(pool);
 
 try {
-  const parsedFiles = await Promise.all(
-    options.files.map(async (file) => ({
+  const parsedFiles = [];
+  for (const file of options.files) {
+    parsedFiles.push({
       file,
-      parsed: parseOsmAlerts(await readFile(file, "utf8"), options.source),
-    })),
-  );
+      parsed: await parseOsmAlertsFromReadable(createReadStream(file, { encoding: "utf8" }), options.source),
+    });
+  }
   const alertsById = new Map(
     parsedFiles.flatMap(({ parsed }) => parsed.alerts).map((alert) => [alert.id, alert]),
   );

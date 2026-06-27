@@ -4,6 +4,8 @@ import type { AlertDatasetStatus, AlertRepository } from "../../application/port
 import type { OsmBounds } from "../osm/osm-alert-parser.js";
 
 type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
+const UPSERT_BATCH_SIZE = 500;
+const ALERT_UPSERT_PARAM_COUNT = 33;
 
 export class PostgisAlertRepository implements AlertRepository {
   constructor(private readonly pool: pg.Pool) {}
@@ -189,7 +191,11 @@ export class PostgisAlertRepository implements AlertRepository {
   }
 
   private async upsertManyWith(executor: QueryExecutor, alerts: RoadAlert[]): Promise<number> {
-    for (const alert of alerts) {
+    const uniqueAlerts = lastAlertById(alerts);
+    for (let index = 0; index < uniqueAlerts.length; index += UPSERT_BATCH_SIZE) {
+      const batch = uniqueAlerts.slice(index, index + UPSERT_BATCH_SIZE);
+      const valuesSql = batch.map((_, batchIndex) => alertValuePlaceholder(batchIndex)).join(",\n");
+      const parameters = batch.flatMap((alert) => alertParameters(alert));
       await executor.query(
         `
         insert into road_alerts (
@@ -199,14 +205,8 @@ export class PostgisAlertRepository implements AlertRepository {
           osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
           operational_status, status_reason, direction_bearings, osm_presence_status,
           original_osm_ids, created_at, updated_at
-        ) values (
-          $1, $2, $3, $4::text[], $5, $6, $7, ST_SetSRID(ST_MakePoint($7, $6), 4326), $8, $9,
-          $10, $11, $12, $13, $14, $15, $16,
-          $17, $18, $19, $20, $21, $22,
-          $23, $24, $25, $26::jsonb, $27, $28,
-          $29, $30, $31::double precision[], $32,
-          $33::text[], now(), now()
-        )
+        ) values
+          ${valuesSql}
         on conflict (id) do update set
           type = excluded.type,
           subtype = excluded.subtype,
@@ -243,17 +243,7 @@ export class PostgisAlertRepository implements AlertRepository {
           original_osm_ids = excluded.original_osm_ids,
           updated_at = now()
         `,
-        [
-          alert.id, alert.type, alert.subtype ?? null, alert.capabilities ?? [], alert.primaryCapability ?? null,
-          alert.latitude, alert.longitude, alert.speedLimitKmh, alert.speedLimitSource,
-          alert.direction, alert.bearing, alert.roadId, alert.confidence, alert.active,
-          alert.validFrom, alert.validUntil, alert.source, alert.osmType ?? null, alert.osmId ?? null,
-          alert.osmRelationId ?? null, alert.osmVersion ?? null, alert.osmTimestamp ?? null,
-          alert.osmChangeset ?? null, alert.osmUser ?? null, alert.osmUid ?? null,
-          JSON.stringify(alert.sourceTags ?? {}), alert.fixme ?? null, alert.positionApproximate ?? false,
-          alert.operationalStatus ?? "unknown", alert.statusReason ?? alert.fixme ?? null,
-          alert.directionBearings ?? [], alert.osmPresenceStatus ?? "present", alert.originalOsmIds ?? [],
-        ],
+        parameters,
       );
     }
     return alerts.length;
@@ -317,4 +307,63 @@ export class PostgisAlertRepository implements AlertRepository {
     );
     return result.rowCount ?? 0;
   }
+}
+
+function alertValuePlaceholder(batchIndex: number): string {
+  const offset = batchIndex * ALERT_UPSERT_PARAM_COUNT;
+  const parameter = (position: number): string => `$${offset + position}`;
+  return `(
+    ${parameter(1)}, ${parameter(2)}, ${parameter(3)}, ${parameter(4)}::text[], ${parameter(5)},
+    ${parameter(6)}, ${parameter(7)}, ST_SetSRID(ST_MakePoint(${parameter(7)}, ${parameter(6)}), 4326),
+    ${parameter(8)}, ${parameter(9)}, ${parameter(10)}, ${parameter(11)}, ${parameter(12)},
+    ${parameter(13)}, ${parameter(14)}, ${parameter(15)}, ${parameter(16)}, ${parameter(17)},
+    ${parameter(18)}, ${parameter(19)}, ${parameter(20)}, ${parameter(21)}, ${parameter(22)},
+    ${parameter(23)}, ${parameter(24)}, ${parameter(25)}, ${parameter(26)}::jsonb, ${parameter(27)},
+    ${parameter(28)}, ${parameter(29)}, ${parameter(30)}, ${parameter(31)}::double precision[],
+    ${parameter(32)}, ${parameter(33)}::text[], now(), now()
+  )`;
+}
+
+function lastAlertById(alerts: RoadAlert[]): RoadAlert[] {
+  const byId = new Map<string, RoadAlert>();
+  for (const alert of alerts) byId.set(alert.id, alert);
+  return [...byId.values()];
+}
+
+function alertParameters(alert: RoadAlert): unknown[] {
+  return [
+    alert.id,
+    alert.type,
+    alert.subtype ?? null,
+    alert.capabilities ?? [],
+    alert.primaryCapability ?? null,
+    alert.latitude,
+    alert.longitude,
+    alert.speedLimitKmh,
+    alert.speedLimitSource,
+    alert.direction,
+    alert.bearing,
+    alert.roadId,
+    alert.confidence,
+    alert.active,
+    alert.validFrom,
+    alert.validUntil,
+    alert.source,
+    alert.osmType ?? null,
+    alert.osmId ?? null,
+    alert.osmRelationId ?? null,
+    alert.osmVersion ?? null,
+    alert.osmTimestamp ?? null,
+    alert.osmChangeset ?? null,
+    alert.osmUser ?? null,
+    alert.osmUid ?? null,
+    JSON.stringify(alert.sourceTags ?? {}),
+    alert.fixme ?? null,
+    alert.positionApproximate ?? false,
+    alert.operationalStatus ?? "unknown",
+    alert.statusReason ?? alert.fixme ?? null,
+    alert.directionBearings ?? [],
+    alert.osmPresenceStatus ?? "present",
+    alert.originalOsmIds ?? [],
+  ];
 }

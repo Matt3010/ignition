@@ -1,4 +1,8 @@
-import { parseOsmAlerts } from "../../src/infrastructure/osm/osm-alert-parser.js";
+import { Readable } from "node:stream";
+import {
+  parseOsmAlerts,
+  parseOsmAlertsFromReadable,
+} from "../../src/infrastructure/osm/osm-alert-parser.js";
 
 describe("OSM alert parser", () => {
   it("imports static alerts from real OSM tags", () => {
@@ -146,5 +150,42 @@ describe("OSM alert quality hardening", () => {
     const result = parseOsmAlerts(xml);
     expect(result.alerts).toHaveLength(3);
     expect(result.alerts.map((alert) => alert.osmId)).toEqual(["1", "2", "3"]);
+  });
+
+  it("accepts XML attributes quoted with apostrophes and decodes numeric entities", () => {
+    const xml = `<osm version='0.6'>
+      <node id='1' lat='45' lon='11' timestamp='2026-01-01T00:00:00Z'>
+        <tag k='highway' v='speed_camera'/>
+        <tag k='fixme' v='approx &#176; position'/>
+      </node>
+    </osm>`;
+
+    const result = parseOsmAlerts(xml);
+
+    expect(result.alerts).toHaveLength(1);
+    expect(result.alerts[0]).toMatchObject({
+      osmId: "1",
+      latitude: 45,
+      longitude: 11,
+      fixme: "approx \u00b0 position",
+    });
+  });
+
+  it("parses OSM XML from a readable stream without requiring a full input string", async () => {
+    const chunks = [
+      `<osm version="0.6"><node id="1" lat="45" lon="11">`,
+      `<tag k="highway" v="speed_camera"/>`,
+      `<tag k="maxspeed" v="50"/></node></osm>`,
+    ];
+
+    const result = await parseOsmAlertsFromReadable(Readable.from(chunks), "osm-stream-test");
+
+    expect(result.elementsScanned).toBe(1);
+    expect(result.alerts).toHaveLength(1);
+    expect(result.alerts[0]).toMatchObject({
+      osmId: "1",
+      speedLimitKmh: 50,
+      source: "osm-stream-test",
+    });
   });
 });

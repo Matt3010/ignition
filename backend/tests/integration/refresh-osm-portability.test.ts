@@ -70,12 +70,12 @@ describe("OSM refresh tile activation portability", () => {
     expect(script).toContain("osm_unconfigured_extract_removed");
   });
 
-  it("does not wait for the full stale timeout when a recreated container left the lock", async () => {
+  it("does not use a shorter stale timeout for locks from a different host", async () => {
     const script = await readFile(scriptPath, "utf8");
 
-    expect(script).toContain("OSM_REFRESH_FOREIGN_LOCK_STALE_SECONDS");
-    expect(script).toContain('owner_host" != "$current_host"');
-    expect(script).toContain('"$age" -ge "$OSM_REFRESH_FOREIGN_LOCK_STALE_SECONDS"');
+    expect(script).not.toContain("OSM_REFRESH_FOREIGN_LOCK_STALE_SECONDS");
+    expect(script).not.toContain('owner_host" != "$current_host"');
+    expect(script).toContain('"$age" -ge "$OSM_REFRESH_LOCK_STALE_SECONDS"');
   });
 
 });

@@ -86,6 +86,23 @@ describeLive("live PostgreSQL/PostGIS integration", () => {
     });
     expect(afterDeactivate).toEqual([]);
   });
+
+  it("persists multi-row upsert batches against real PostGIS", async () => {
+    const alerts = Array.from({ length: 501 }, (_, index) =>
+      makeAlert(randomUUID(), 43.7 + index / 100_000, 7.4 + index / 100_000, {
+        source: "ci-live-test",
+        osmId: `batch-${index}`,
+        originalOsmIds: [`node/batch-${index}`],
+      }),
+    );
+
+    expect(await repository.upsertMany(alerts)).toBe(501);
+
+    const result = await pool.query(
+      "select count(*)::int as count from road_alerts where source = 'ci-live-test' and osm_id like 'batch-%'",
+    );
+    expect(Number(result.rows[0]?.count ?? 0)).toBe(501);
+  });
 });
 
 function makeAlert(

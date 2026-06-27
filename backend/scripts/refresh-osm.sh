@@ -12,7 +12,6 @@ VALHALLA_FAILED_TILE_DIR="${VALHALLA_FAILED_TILE_DIR:-${VALHALLA_TILE_DIR}.faile
 VALHALLA_CONTAINER_NAME="${VALHALLA_CONTAINER_NAME:-road-context-valhalla}"
 OSM_REFRESH_LOCK_TIMEOUT_SECONDS="${OSM_REFRESH_LOCK_TIMEOUT_SECONDS:-3600}"
 OSM_REFRESH_LOCK_STALE_SECONDS="${OSM_REFRESH_LOCK_STALE_SECONDS:-7200}"
-OSM_REFRESH_FOREIGN_LOCK_STALE_SECONDS="${OSM_REFRESH_FOREIGN_LOCK_STALE_SECONDS:-60}"
 VALHALLA_HEALTH_URL="${VALHALLA_HEALTH_URL:-http://127.0.0.1:8002/status}"
 VALHALLA_METADATA_URL="${VALHALLA_METADATA_URL:-${VALHALLA_HEALTH_URL}?json=%7B%22verbose%22%3Atrue%7D}"
 VALHALLA_HEALTH_TIMEOUT_SECONDS="${VALHALLA_HEALTH_TIMEOUT_SECONDS:-120}"
@@ -87,10 +86,6 @@ lock_is_stale() {
   if [[ "$owner_started" =~ ^[0-9]+$ ]]; then age=$((now - owner_started)); else age=0; fi
   if [[ -n "$owner_pid" && "$owner_host" == "$current_host" ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
     return 0
-  fi
-  if [[ -n "$owner_host" && "$owner_host" != "$current_host" ]]; then
-    [[ "$age" -ge "$OSM_REFRESH_FOREIGN_LOCK_STALE_SECONDS" ]]
-    return
   fi
   [[ "$age" -ge "$OSM_REFRESH_LOCK_STALE_SECONDS" ]]
 }

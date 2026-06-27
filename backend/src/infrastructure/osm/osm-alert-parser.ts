@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import type { Readable } from "node:stream";
+import { SaxesParser, type SaxesTagPlain } from "saxes";
 import type { Direction, RoadAlert } from "../../domain/models/alert.js";
 import {
   haversineMeters,
@@ -35,6 +37,13 @@ interface OsmRelation {
   attributes: Record<string, string>;
 }
 
+interface ParsedOsmDocument {
+  nodes: Map<string, OsmNode>;
+  ways: OsmWay[];
+  relations: OsmRelation[];
+  bounds: OsmBounds | null;
+}
+
 export interface OsmAlertParseResult {
   alerts: RoadAlert[];
   elementsScanned: number;
@@ -49,10 +58,19 @@ export interface OsmBounds {
 }
 
 export function parseOsmAlerts(xml: string, source = "osm"): OsmAlertParseResult {
-  const nodes = parseNodes(xml);
-  const ways = parseWays(xml);
+  return buildOsmAlertParseResult(parseOsmDocumentFromString(xml), source);
+}
+
+export async function parseOsmAlertsFromReadable(
+  readable: Readable,
+  source = "osm",
+): Promise<OsmAlertParseResult> {
+  return buildOsmAlertParseResult(await parseOsmDocumentFromReadable(readable), source);
+}
+
+function buildOsmAlertParseResult(document: ParsedOsmDocument, source: string): OsmAlertParseResult {
+  const { nodes, ways, relations, bounds } = document;
   const waysById = new Map(ways.map((way) => [way.id, way]));
-  const relations = parseRelations(xml);
   const alerts: RoadAlert[] = [];
 
   for (const node of nodes.values()) {
@@ -93,7 +111,7 @@ export function parseOsmAlerts(xml: string, source = "osm"): OsmAlertParseResult
   return {
     alerts: dedupe(alerts),
     elementsScanned: nodes.size + ways.length + relations.length,
-    bounds: parseBounds(xml) ?? boundsFromNodes(nodes),
+    bounds: bounds ?? boundsFromNodes(nodes),
   };
 }
 
@@ -254,35 +272,123 @@ function stableIdentityType(type: RoadAlert["type"]): RoadAlert["type"] {
   return type === "averageSpeedCamera" ? "fixedSpeedCamera" : type;
 }
 
-function parseNodes(xml: string): Map<string, OsmNode> {
-  const nodes = new Map<string, OsmNode>();
-  for (const match of xml.matchAll(/<node\b([^>]*?)(?:\/>|>([\s\S]*?)<\/node>)/g)) {
-    const attrs = parseAttributes(match[1]);
-    const id = attrs.id;
-    const latitude = Number(attrs.lat);
-    const longitude = Number(attrs.lon);
-    if (!id || !Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-    nodes.set(id, {
-      id,
-      latitude,
-      longitude,
-      tags: parseTags(match[2] ?? ""),
-      attributes: attrs,
-    });
-  }
-  return nodes;
+function parseOsmDocumentFromString(xml: string): ParsedOsmDocument {
+  const context = createOsmDocumentParser();
+  context.parser.write(xml).close();
+  return context.document();
 }
 
-function parseBounds(xml: string): OsmBounds | null {
-  const match = xml.match(/<bounds\b([^>]*)\/>/);
-  if (!match) return null;
-  const attrs = parseAttributes(match[1]);
-  const minLatitude = Number(attrs.minlat);
-  const minLongitude = Number(attrs.minlon);
-  const maxLatitude = Number(attrs.maxlat);
-  const maxLongitude = Number(attrs.maxlon);
+async function parseOsmDocumentFromReadable(readable: Readable): Promise<ParsedOsmDocument> {
+  const context = createOsmDocumentParser();
+  for await (const chunk of readable) {
+    context.parser.write(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+  }
+  context.parser.close();
+  return context.document();
+}
+
+function createOsmDocumentParser(): {
+  parser: SaxesParser<{ xmlns: false }>;
+  document: () => ParsedOsmDocument;
+} {
+  const nodes = new Map<string, OsmNode>();
+  const ways: OsmWay[] = [];
+  const relations: OsmRelation[] = [];
+  let bounds: OsmBounds | null = null;
+  let currentNode: OsmNode | null = null;
+  let currentWay: OsmWay | null = null;
+  let currentRelation: OsmRelation | null = null;
+
+  const parser = new SaxesParser({ xmlns: false });
+  parser.on("opentag", (tag: SaxesTagPlain) => {
+    const attributes = tag.attributes;
+    switch (tag.name) {
+      case "bounds":
+        bounds = boundsFromAttributes(attributes);
+        break;
+      case "node":
+        currentNode = nodeFromAttributes(attributes);
+        if (tag.isSelfClosing && currentNode) {
+          nodes.set(currentNode.id, currentNode);
+          currentNode = null;
+        }
+        break;
+      case "way":
+        currentWay = attributes.id
+          ? { id: attributes.id, nodeRefs: [], tags: {}, attributes }
+          : null;
+        break;
+      case "relation":
+        currentRelation = attributes.id
+          ? { id: attributes.id, members: [], tags: {}, attributes }
+          : null;
+        break;
+      case "tag":
+        addTag(attributes, currentRelation?.tags ?? currentWay?.tags ?? currentNode?.tags ?? null);
+        break;
+      case "nd":
+        if (currentWay && attributes.ref) currentWay.nodeRefs.push(attributes.ref);
+        break;
+      case "member":
+        if (currentRelation) {
+          currentRelation.members.push({
+            type: attributes.type ?? "",
+            ref: attributes.ref ?? "",
+            role: attributes.role ?? "",
+          });
+        }
+        break;
+    }
+  });
+
+  parser.on("closetag", (tag: SaxesTagPlain) => {
+    switch (tag.name) {
+      case "node":
+        if (currentNode) nodes.set(currentNode.id, currentNode);
+        currentNode = null;
+        break;
+      case "way":
+        if (currentWay) ways.push(currentWay);
+        currentWay = null;
+        break;
+      case "relation":
+        if (currentRelation) relations.push(currentRelation);
+        currentRelation = null;
+        break;
+    }
+  });
+
+  return {
+    parser,
+    document: () => ({ nodes, ways, relations, bounds }),
+  };
+}
+
+function nodeFromAttributes(attributes: Record<string, string>): OsmNode | null {
+  const id = attributes.id;
+  const latitude = Number(attributes.lat);
+  const longitude = Number(attributes.lon);
+  if (!id || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  return {
+    id,
+    latitude,
+    longitude,
+    tags: {},
+    attributes,
+  };
+}
+
+function boundsFromAttributes(attributes: Record<string, string>): OsmBounds | null {
+  const minLatitude = Number(attributes.minlat);
+  const minLongitude = Number(attributes.minlon);
+  const maxLatitude = Number(attributes.maxlat);
+  const maxLongitude = Number(attributes.maxlon);
   if (![minLatitude, minLongitude, maxLatitude, maxLongitude].every(Number.isFinite)) return null;
   return { minLatitude, minLongitude, maxLatitude, maxLongitude };
+}
+
+function addTag(attributes: Record<string, string>, tags: Record<string, string> | null): void {
+  if (tags && attributes.k && attributes.v !== undefined) tags[attributes.k] = attributes.v;
 }
 
 function boundsFromNodes(nodes: Map<string, OsmNode>): OsmBounds | null {
@@ -298,41 +404,6 @@ function boundsFromNodes(nodes: Map<string, OsmNode>): OsmBounds | null {
     maxLongitude = Math.max(maxLongitude, node.longitude);
   }
   return { minLatitude, minLongitude, maxLatitude, maxLongitude };
-}
-
-function parseWays(xml: string): OsmWay[] {
-  const ways: OsmWay[] = [];
-  for (const match of xml.matchAll(/<way\b([^>]*)>([\s\S]*?)<\/way>/g)) {
-    const attrs = parseAttributes(match[1]);
-    if (!attrs.id) continue;
-    ways.push({
-      id: attrs.id,
-      nodeRefs: [...match[2].matchAll(/<nd\b([^>]*)\/>/g)]
-        .map((item) => parseAttributes(item[1]).ref)
-        .filter((ref): ref is string => Boolean(ref)),
-      tags: parseTags(match[2]),
-      attributes: attrs,
-    });
-  }
-  return ways;
-}
-
-function parseRelations(xml: string): OsmRelation[] {
-  const relations: OsmRelation[] = [];
-  for (const match of xml.matchAll(/<relation\b([^>]*)>([\s\S]*?)<\/relation>/g)) {
-    const attrs = parseAttributes(match[1]);
-    if (!attrs.id) continue;
-    relations.push({
-      id: attrs.id,
-      members: [...match[2].matchAll(/<member\b([^>]*)\/>/g)].map((item) => {
-        const member = parseAttributes(item[1]);
-        return { type: member.type ?? "", ref: member.ref ?? "", role: member.role ?? "" };
-      }),
-      tags: parseTags(match[2]),
-      attributes: attrs,
-    });
-  }
-  return relations;
 }
 
 function relationNode(
@@ -421,32 +492,6 @@ function nearestNode(nodes: OsmNode[], target: OsmNode): OsmNode {
 
 function squaredDistance(left: OsmNode, right: OsmNode): number {
   return (left.latitude - right.latitude) ** 2 + (left.longitude - right.longitude) ** 2;
-}
-
-function parseTags(block: string): Record<string, string> {
-  const tags: Record<string, string> = {};
-  for (const match of block.matchAll(/<tag\b([^>]*)\/>/g)) {
-    const attrs = parseAttributes(match[1]);
-    if (attrs.k && attrs.v !== undefined) tags[attrs.k] = attrs.v;
-  }
-  return tags;
-}
-
-function parseAttributes(input: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  for (const match of input.matchAll(/([A-Za-z_:][\w:.-]*)="([^"]*)"/g)) {
-    attrs[match[1]] = decodeXml(match[2]);
-  }
-  return attrs;
-}
-
-function decodeXml(input: string): string {
-  return input
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&");
 }
 
 function wayCenter(

@@ -35,6 +35,32 @@ export type UnmatchedReason = "noMatch" | "providerError";
 export type PublicMatchStatus = "matched" | "noMatch" | "providerUnavailable";
 export type AlertRelevance = "route" | "nearby";
 
+export interface RoadContextAlertResponse {
+  id: string;
+  relevance: AlertRelevance;
+  type: AlertCandidate["type"];
+  subtype: string | null;
+  capabilities: string[];
+  primaryCapability: string | null;
+  distanceMeters: number;
+  speedLimitKmh: number | null;
+  speedLimitSource: SpeedLimitSource;
+  latitude: number;
+  longitude: number;
+  direction: Direction;
+  confidence: number;
+  operationalStatus: OperationalStatus;
+  statusReason: string | null;
+  directionBearings: number[];
+  osmPresenceStatus: OsmPresenceStatus;
+  active: boolean;
+  positionApproximate: boolean;
+  osmType: string | null;
+  osmId: string | null;
+  osmRelationId: string | null;
+  osmTimestamp: string | null;
+}
+
 export interface UnmatchedRoad {
   matched: false;
   unmatchedReason: UnmatchedReason;
@@ -59,56 +85,8 @@ export interface RoadContextResponse extends Omit<
 > {
   matchStatus: PublicMatchStatus;
   alertsStatus: "available" | "empty" | "unavailable";
-  alerts: Array<{
-    id: string;
-    relevance: AlertRelevance;
-    type: AlertCandidate["type"];
-    subtype: string | null;
-    capabilities: string[];
-    primaryCapability: string | null;
-    distanceMeters: number;
-    speedLimitKmh: number | null;
-    speedLimitSource: SpeedLimitSource;
-    latitude: number;
-    longitude: number;
-    direction: Direction;
-    confidence: number;
-    operationalStatus: OperationalStatus;
-    statusReason: string | null;
-    directionBearings: number[];
-    osmPresenceStatus: OsmPresenceStatus;
-    active: boolean;
-    positionApproximate: boolean;
-    osmType: string | null;
-    osmId: string | null;
-    osmRelationId: string | null;
-    osmTimestamp: string | null;
-  }>;
-  genericAlerts: Array<{
-    id: string;
-    relevance: AlertRelevance;
-    type: AlertCandidate["type"];
-    subtype: string | null;
-    capabilities: string[];
-    primaryCapability: string | null;
-    distanceMeters: number;
-    speedLimitKmh: number | null;
-    speedLimitSource: SpeedLimitSource;
-    latitude: number;
-    longitude: number;
-    direction: Direction;
-    confidence: number;
-    operationalStatus: OperationalStatus;
-    statusReason: string | null;
-    directionBearings: number[];
-    osmPresenceStatus: OsmPresenceStatus;
-    active: boolean;
-    positionApproximate: boolean;
-    osmType: string | null;
-    osmId: string | null;
-    osmRelationId: string | null;
-    osmTimestamp: string | null;
-  }>;
+  alerts: RoadContextAlertResponse[];
+  genericAlerts: RoadContextAlertResponse[];
 }
 
 export interface SessionRoadState {

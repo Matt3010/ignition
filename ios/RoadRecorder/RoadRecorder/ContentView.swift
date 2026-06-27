@@ -251,13 +251,13 @@ private struct EventRow: View {
                         text: response.alertsStatus == "unavailable" ? "alert: non disponibili" : response.alertsStatus == "empty" ? "alert: disponibili, nessun dato presente" : "alert: disponibili"
                     )
 
-                    if response.alertsStatus == "unavailable" {
-                        EmptyView()
-                    } else if response.alerts.isEmpty {
-                        EventDetailLine(icon: "camera", text: "alert: nessuno")
-                    } else {
-                        ForEach(response.alerts, id: \.id) { alert in
-                            EventAlertLine(alert: alert)
+                    if response.alertsStatus != "unavailable" {
+                        if response.alerts.isEmpty {
+                            EventDetailLine(icon: "camera", text: "alert: nessuno")
+                        } else {
+                            ForEach(response.alerts, id: \.id) { alert in
+                                EventAlertLine(alert: alert)
+                            }
                         }
                     }
                 }
@@ -292,9 +292,6 @@ private struct EventRow: View {
         return event.sample.speedKmh > Double(limit) + 2 ? .red : .secondary
     }
 
-    private func percent(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))%"
-    }
 }
 
 private struct EventDetailLine: View {
@@ -353,9 +350,10 @@ private struct EventAlertLine: View {
         .padding(.leading, 2)
     }
 
-    private func percent(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))%"
-    }
+}
+
+private func percent(_ value: Double) -> String {
+    "\(Int((value * 100).rounded()))%"
 }
 
 
