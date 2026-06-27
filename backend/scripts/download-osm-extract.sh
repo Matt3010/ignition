@@ -11,9 +11,12 @@ OSM_DOWNLOAD_RETRY_DELAY_SECONDS="${OSM_DOWNLOAD_RETRY_DELAY_SECONDS:-5}"
 OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS="${OSM_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-15}"
 OSM_DOWNLOAD_SPEED_TIME_SECONDS="${OSM_DOWNLOAD_SPEED_TIME_SECONDS:-120}"
 OSM_DOWNLOAD_SPEED_LIMIT_BYTES="${OSM_DOWNLOAD_SPEED_LIMIT_BYTES:-32768}"
+PROGRESS_INTERVAL_SECONDS=30
+PROGRESS_PID=""
 
 absolute_path() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$(pwd)" "$1" ;; esac; }
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
+json_escape() { node -e "process.stdout.write(JSON.stringify(process.argv[1]).slice(1,-1))" "$1"; }
 preset_urls() {
   case "$1" in
     italy) printf '%s\n' "https://download.geofabrik.de/europe/italy-latest.osm.pbf" ;;
@@ -34,6 +37,39 @@ preset_urls() {
 }
 
 mkdir -p "$OSM_DATA_DIR"
+
+stop_file_progress_monitor() {
+  if [[ -n "$PROGRESS_PID" ]]; then
+    kill "$PROGRESS_PID" >/dev/null 2>&1 || true
+    wait "$PROGRESS_PID" >/dev/null 2>&1 || true
+    PROGRESS_PID=""
+  fi
+}
+
+start_file_progress_monitor() {
+  local event="$1" region="$2" path="$3" source="${4:-}"
+  (
+    sleep_pid=""
+    trap 'if [[ -n "$sleep_pid" ]]; then kill "$sleep_pid" >/dev/null 2>&1 || true; fi; exit 0' TERM INT
+    started_at="$(date +%s)"
+    previous_bytes="$(stat -c %s "$path" 2>/dev/null || printf '0')"
+    while true; do
+      sleep "$PROGRESS_INTERVAL_SECONDS" &
+      sleep_pid=$!
+      wait "$sleep_pid" || exit 0
+      sleep_pid=""
+      now="$(date +%s)"
+      bytes="$(stat -c %s "$path" 2>/dev/null || printf '0')"
+      delta=$(( bytes - previous_bytes ))
+      previous_bytes="$bytes"
+      elapsed=$(( now - started_at ))
+      echo "{\"event\":\"$event\",\"region\":\"$(json_escape "$region")\",\"path\":\"$(json_escape "$path")\",\"source\":\"$(json_escape "$source")\",\"elapsedSeconds\":$elapsed,\"bytes\":$bytes,\"deltaBytes\":$delta}"
+    done
+  ) &
+  PROGRESS_PID=$!
+}
+
+trap stop_file_progress_monitor EXIT
 
 require_command() {
   local command_name="$1"
@@ -122,6 +158,7 @@ for region in "${regions[@]}"; do
       echo "{\"event\":\"osm_download_started\",\"region\":\"$region\",\"source\":\"$url\",\"resumeBytes\":$partial_bytes}"
 
       curl_exit=0
+      start_file_progress_monitor "osm_download_progress" "$region" "$tmp_target" "$url"
       curl \
         --fail \
         --location \
@@ -137,6 +174,7 @@ for region in "${regions[@]}"; do
         --user-agent "ignition-osm-downloader/1.0" \
         --output "$tmp_target" \
         "$url" || curl_exit=$?
+      stop_file_progress_monitor
 
       # Exit 33 means the origin refused the requested byte range. Restart only
       # in that specific case; transient failures keep the partial download.
@@ -144,6 +182,7 @@ for region in "${regions[@]}"; do
         echo "{\"event\":\"osm_download_resume_unsupported\",\"region\":\"$region\",\"source\":\"$url\"}" >&2
         rm -f "$tmp_target"
         curl_exit=0
+        start_file_progress_monitor "osm_download_progress" "$region" "$tmp_target" "$url"
         curl \
           --fail \
           --location \
@@ -158,6 +197,7 @@ for region in "${regions[@]}"; do
           --user-agent "ignition-osm-downloader/1.0" \
           --output "$tmp_target" \
           "$url" || curl_exit=$?
+        stop_file_progress_monitor
       fi
 
       if (( curl_exit == 0 )); then
@@ -200,11 +240,14 @@ for region in "${regions[@]}"; do
     echo "{\"event\":\"osm_alerts_reused\",\"region\":\"$region\",\"bytes\":$alerts_bytes}"
   else
     echo "{\"event\":\"osm_alert_extraction_started\",\"region\":\"$region\"}"
+    start_file_progress_monitor "osm_alert_extraction_progress" "$region" "$alerts_target" "$target"
     if ! osmium tags-filter "$target" "${filters[@]}" --overwrite --output "$alerts_target"; then
+      stop_file_progress_monitor
       echo "Failed to extract OSM alerts for region: $region" >&2
       rm -f "$alerts_target"
       exit 65
     fi
+    stop_file_progress_monitor
     if ! validate_osm_file "$alerts_target" "$OSM_ALERT_EXTRACT_MIN_BYTES"; then
       echo "Prepared alert extract for $region is not a valid OSM file" >&2
       rm -f "$alerts_target"

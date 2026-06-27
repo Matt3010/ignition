@@ -15,6 +15,9 @@ describe("OSM refresh resilience", () => {
     expect(script).not.toContain("OSM_DOWNLOAD_MAX_TIME_SECONDS");
     expect(script).toContain("osm_download_interrupted");
     expect(script).toContain("retained partial download");
+    expect(script).toContain("osm_download_progress");
+    expect(script).toContain("osm_alert_extraction_progress");
+    expect(script).toContain("PROGRESS_INTERVAL_SECONDS=30");
   });
 
   it("only claims prepared OSM reuse after validating every configured region", () => {
