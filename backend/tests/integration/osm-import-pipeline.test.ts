@@ -9,6 +9,7 @@ describe("OSM alert import pipeline", () => {
     const script = await readFile(scriptPath, "utf8");
 
     expect(script).toContain("parseOsmAlertsFromReadable");
+    expect(script).toContain("PostgisAlertImportRepository");
     expect(script).toContain("syncAlertBatchesViaStaging");
     expect(script).toContain("parseAlertBatches");
     expect(script).not.toContain("readFile(");

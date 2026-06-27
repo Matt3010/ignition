@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { createPool } from "../src/infrastructure/database/postgres.js";
-import { PostgisAlertRepository } from "../src/infrastructure/repositories/postgis-alert-repository.js";
+import { PostgisAlertImportRepository } from "../src/infrastructure/repositories/postgis-alert-import-repository.js";
 import { PostgresImportLogRepository } from "../src/infrastructure/repositories/postgres-import-log-repository.js";
 import { parseOsmAlertsFromReadable } from "../src/infrastructure/osm/osm-alert-parser.js";
 import { loadConfig } from "../src/config/env.js";
@@ -17,7 +17,7 @@ interface CliOptions {
 const config = loadConfig();
 const options = await parseArgs(process.argv.slice(2));
 const pool = createPool(config);
-const alertRepository = new PostgisAlertRepository(pool);
+const alertRepository = new PostgisAlertImportRepository(pool);
 const importRepository = new PostgresImportLogRepository(pool);
 
 try {

@@ -1,5 +1,6 @@
 import pg from "pg";
 import { randomUUID } from "node:crypto";
+import { PostgisAlertImportRepository } from "../../src/infrastructure/repositories/postgis-alert-import-repository.js";
 import { PostgisAlertRepository } from "../../src/infrastructure/repositories/postgis-alert-repository.js";
 import type { RoadAlert } from "../../src/domain/models/alert.js";
 
@@ -17,6 +18,7 @@ describeLive("live PostgreSQL/PostGIS integration", () => {
 
   const pool = new pg.Pool({ connectionString, max: 2 });
   const repository = new PostgisAlertRepository(pool);
+  const importRepository = new PostgisAlertImportRepository(pool);
 
   beforeEach(async () => {
     await pool.query("delete from road_alerts where source like 'ci-live-test%'");
@@ -113,7 +115,7 @@ describeLive("live PostgreSQL/PostGIS integration", () => {
       makeAlert(staleId, 43.7102, 7.4102, { source: "ci-live-test-staging", osmId: "staging-stale" }),
     ]);
 
-    const result = await repository.syncManyViaStaging({
+    const result = await importRepository.syncManyViaStaging({
       alerts: [
         makeAlert(keepId, 43.7101, 7.4101, { source: "ci-live-test-staging", speedLimitKmh: 80, osmId: "staging-keep" }),
         makeAlert(replaceId, 43.7103, 7.4103, { source: "ci-live-test-staging", osmId: "staging-new" }),

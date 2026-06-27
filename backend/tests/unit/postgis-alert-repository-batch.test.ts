@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import type { RoadAlert } from "../../src/domain/models/alert.js";
+import { PostgisAlertImportRepository } from "../../src/infrastructure/repositories/postgis-alert-import-repository.js";
 import { PostgisAlertRepository } from "../../src/infrastructure/repositories/postgis-alert-repository.js";
 
 describe("PostgisAlertRepository batching", () => {
@@ -71,7 +72,7 @@ describe("PostgisAlertRepository batching", () => {
     const pool = {
       connect: async () => client,
     } as unknown as pg.Pool;
-    const repository = new PostgisAlertRepository(pool);
+    const repository = new PostgisAlertImportRepository(pool);
 
     await expect(repository.syncManyViaStaging({
       alerts: makeAlerts(2),
@@ -110,7 +111,7 @@ describe("PostgisAlertRepository batching", () => {
     const pool = {
       connect: async () => client,
     } as unknown as pg.Pool;
-    const repository = new PostgisAlertRepository(pool);
+    const repository = new PostgisAlertImportRepository(pool);
 
     await expect(repository.syncAlertBatchesViaStaging({
       batches: (async function* () {
