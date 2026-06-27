@@ -18,12 +18,12 @@ describeLive("live PostgreSQL/PostGIS integration", () => {
   const pool = new pg.Pool({ connectionString, max: 2 });
   const repository = new PostgisAlertRepository(pool);
 
-  beforeAll(async () => {
-    await pool.query("delete from road_alerts where source = 'ci-live-test'");
+  beforeEach(async () => {
+    await pool.query("delete from road_alerts where source like 'ci-live-test%'");
   });
 
   afterAll(async () => {
-    await pool.query("delete from road_alerts where source = 'ci-live-test'");
+    await pool.query("delete from road_alerts where source like 'ci-live-test%'");
     await pool.end();
   });
 
@@ -102,6 +102,48 @@ describeLive("live PostgreSQL/PostGIS integration", () => {
       "select count(*)::int as count from road_alerts where source = 'ci-live-test' and osm_id like 'batch-%'",
     );
     expect(Number(result.rows[0]?.count ?? 0)).toBe(501);
+  });
+
+  it("syncs OSM alerts through staging and deactivates missing rows", async () => {
+    const keepId = randomUUID();
+    const replaceId = randomUUID();
+    const staleId = randomUUID();
+    await repository.upsertMany([
+      makeAlert(keepId, 43.7101, 7.4101, { source: "ci-live-test-staging", osmId: "staging-keep" }),
+      makeAlert(staleId, 43.7102, 7.4102, { source: "ci-live-test-staging", osmId: "staging-stale" }),
+    ]);
+
+    const result = await repository.syncManyViaStaging({
+      alerts: [
+        makeAlert(keepId, 43.7101, 7.4101, { source: "ci-live-test-staging", speedLimitKmh: 80, osmId: "staging-keep" }),
+        makeAlert(replaceId, 43.7103, 7.4103, { source: "ci-live-test-staging", osmId: "staging-new" }),
+      ],
+      source: "ci-live-test-staging",
+      bounds: {
+        minLatitude: 43.70,
+        minLongitude: 7.40,
+        maxLatitude: 43.72,
+        maxLongitude: 7.42,
+      },
+      deactivateMissing: true,
+      minRetainRatio: 0.1,
+      minExistingForRatioCheck: 1,
+    });
+
+    expect(result).toEqual({ upserted: 2, deactivated: 1 });
+    const rows = await pool.query(
+      `
+      select id::text, speed_limit_kmh, active, osm_presence_status
+      from road_alerts
+      where id = any($1::uuid[])
+      order by id
+      `,
+      [[keepId, replaceId, staleId]],
+    );
+    const byId = new Map(rows.rows.map((row) => [row.id, row]));
+    expect(byId.get(keepId)).toMatchObject({ speed_limit_kmh: 80, active: true, osm_presence_status: "present" });
+    expect(byId.get(replaceId)).toMatchObject({ active: true, osm_presence_status: "present" });
+    expect(byId.get(staleId)).toMatchObject({ active: false, osm_presence_status: "missingFromLatestImport" });
   });
 });
 

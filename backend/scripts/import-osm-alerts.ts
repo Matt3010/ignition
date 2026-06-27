@@ -21,26 +21,14 @@ const alertRepository = new PostgisAlertRepository(pool);
 const importRepository = new PostgresImportLogRepository(pool);
 
 try {
-  const parsedFiles = [];
-  for (const file of options.files) {
-    parsedFiles.push({
-      file,
-      parsed: await parseOsmAlertsFromReadable(createReadStream(file, { encoding: "utf8" }), options.source),
-    });
-  }
-  const alertsById = new Map(
-    parsedFiles.flatMap(({ parsed }) => parsed.alerts).map((alert) => [alert.id, alert]),
-  );
-  const alerts = [...alertsById.values()];
-  const bounds = mergeBounds(parsedFiles.map(({ parsed }) => parsed.bounds));
-  const result = await alertRepository.syncMany({
-    alerts,
+  const result = await alertRepository.syncAlertBatchesViaStaging({
+    batches: parseAlertBatches(options.files, options.source),
     source: options.source,
-    bounds,
     deactivateMissing: options.deactivateStale,
     minRetainRatio: config.OSM_IMPORT_MIN_RETAIN_RATIO,
     minExistingForRatioCheck: config.OSM_IMPORT_MIN_EXISTING_FOR_RATIO_CHECK,
   });
+  const bounds = result.bounds;
   const bbox = bounds ? formatBounds(bounds) : null;
   const filePath = options.files.join(",");
 
@@ -66,8 +54,8 @@ try {
     source: options.source,
     files: options.files,
     bbox,
-    elementsScanned: parsedFiles.reduce((sum, { parsed }) => sum + parsed.elementsScanned, 0),
-    records: alerts.length,
+    elementsScanned: result.elementsScanned,
+    records: result.upserted,
     upserted: result.upserted,
     deactivated: result.deactivated,
   }));
@@ -91,6 +79,12 @@ try {
   throw error;
 } finally {
   await pool.end();
+}
+
+async function* parseAlertBatches(files: string[], source: string) {
+  for (const file of files) {
+    yield await parseOsmAlertsFromReadable(createReadStream(file, { encoding: "utf8" }), source);
+  }
 }
 
 async function parseArgs(args: string[]): Promise<CliOptions> {
@@ -151,27 +145,6 @@ function splitList(value: string): string[] {
   const values = value.split(",").map((item) => item.trim()).filter(Boolean);
   if (values.length === 0) throw new Error("OSM region/file list is empty");
   return values;
-}
-
-function mergeBounds(bounds: Array<{
-  minLatitude: number;
-  minLongitude: number;
-  maxLatitude: number;
-  maxLongitude: number;
-} | null>): {
-  minLatitude: number;
-  minLongitude: number;
-  maxLatitude: number;
-  maxLongitude: number;
-} | null {
-  const present = bounds.filter((item): item is NonNullable<typeof item> => item !== null);
-  if (present.length === 0) return null;
-  return {
-    minLatitude: Math.min(...present.map((item) => item.minLatitude)),
-    minLongitude: Math.min(...present.map((item) => item.minLongitude)),
-    maxLatitude: Math.max(...present.map((item) => item.maxLatitude)),
-    maxLongitude: Math.max(...present.map((item) => item.maxLongitude)),
-  };
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
