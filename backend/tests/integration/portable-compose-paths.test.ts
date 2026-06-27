@@ -12,6 +12,13 @@ const composeFiles = [
 ];
 
 describe("portable host paths in Docker Compose", () => {
+  it.each(composeFiles)("uses process health, not alert dataset readiness, for backend container health in %s", (file) => {
+    const compose = readFileSync(file, "utf8");
+
+    expect(compose).toContain("http://127.0.0.1:3000/health");
+    expect(compose).not.toContain("http://127.0.0.1:3000/ready");
+  });
+
   it.each(composeFiles)("keeps host path fallbacks for the Valhalla staging bind mount in %s", (file) => {
     const compose = readFileSync(file, "utf8");
 
