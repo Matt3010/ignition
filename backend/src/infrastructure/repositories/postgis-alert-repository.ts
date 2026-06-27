@@ -2,6 +2,7 @@ import type pg from "pg";
 import type { AlertCandidate, RoadAlert } from "../../domain/models/alert.js";
 import type { AlertDatasetStatus, AlertRepository } from "../../application/ports/alert-repository.js";
 import type { OsmBounds } from "../osm/osm-alert-parser.js";
+import { assertSafeImportSize, countActiveAlertsInBounds } from "./postgis-alert-import-safety.js";
 import { alertParameters, lastAlertById, roadAlertValuePlaceholder } from "./postgis-alert-sql.js";
 
 type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
@@ -151,8 +152,8 @@ export class PostgisAlertRepository implements AlertRepository {
     try {
       await client.query("begin");
       if (input.deactivateMissing && input.bounds) {
-        const existingCount = await this.countActiveInBoundsWith(client, input.source, input.bounds);
-        this.assertSafeImportSize({
+        const existingCount = await countActiveAlertsInBounds(client, input.source, input.bounds);
+        assertSafeImportSize({
           incomingCount: input.alerts.length,
           existingCount,
           minRetainRatio: input.minRetainRatio ?? 0,
@@ -247,39 +248,6 @@ export class PostgisAlertRepository implements AlertRepository {
       );
     }
     return alerts.length;
-  }
-
-  private async countActiveInBoundsWith(executor: QueryExecutor, source: string, bounds: OsmBounds): Promise<number> {
-    const result = await executor.query(
-      `
-      select count(*)::int as count
-      from road_alerts
-      where source = $1
-        and active = true
-        and ST_Covers(ST_MakeEnvelope($2, $3, $4, $5, 4326), geometry)
-      `,
-      [source, bounds.minLongitude, bounds.minLatitude, bounds.maxLongitude, bounds.maxLatitude],
-    );
-    return Number(result.rows[0]?.count ?? 0);
-  }
-
-  private assertSafeImportSize(input: {
-    incomingCount: number;
-    existingCount: number;
-    minRetainRatio: number;
-    minExistingForRatioCheck: number;
-  }): void {
-    if (input.existingCount > 0 && input.incomingCount === 0) {
-      throw new Error(`Refusing empty OSM import over ${input.existingCount} active alerts`);
-    }
-    if (input.existingCount < input.minExistingForRatioCheck) return;
-    const retainRatio = input.incomingCount / input.existingCount;
-    if (retainRatio < input.minRetainRatio) {
-      throw new Error(
-        `Refusing anomalous OSM import: ${input.incomingCount}/${input.existingCount} alerts ` +
-        `(retain ratio ${retainRatio.toFixed(3)}, minimum ${input.minRetainRatio})`,
-      );
-    }
   }
 
   private async deactivateMissingInBoundsWith(
