@@ -59,13 +59,16 @@ setup_file_logging
 
 failure_delay="$OSM_REFRESH_FAILURE_RETRY_INITIAL_SECONDS"
 next_refresh_at=0
+refresh_retry_pending=false
 
 run_refresh() {
   if npm run osm:refresh; then
+    refresh_retry_pending=false
     failure_delay="$OSM_REFRESH_FAILURE_RETRY_INITIAL_SECONDS"
     next_refresh_at=$(( $(date +%s) + OSM_REFRESH_INTERVAL_SECONDS ))
     return 0
   fi
+  refresh_retry_pending=true
   echo "{\"event\":\"osm_refresh_failed\",\"nextRetrySeconds\":$failure_delay}" >&2
   next_refresh_at=$(( $(date +%s) + failure_delay ))
   if (( failure_delay < OSM_REFRESH_FAILURE_RETRY_MAX_SECONDS )); then
@@ -91,14 +94,20 @@ run_alert_integrity_check() {
     status=$?
   fi
   if [[ "$status" -eq 2 ]]; then
-    echo '{"event":"osm_alert_sources_missing","action":"schedule_full_refresh"}' >&2
-    next_refresh_at=0
+    if [[ "$refresh_retry_pending" == "true" ]]; then
+      echo '{"event":"osm_alert_sources_missing","action":"wait_for_refresh_retry"}' >&2
+    else
+      echo '{"event":"osm_alert_sources_missing","action":"schedule_full_refresh"}' >&2
+      next_refresh_at=0
+    fi
   elif [[ "$status" -eq 5 ]]; then
     echo "{\"event\":\"osm_alert_sources_missing\",\"action\":\"schedule_source_repair\",\"nextRefreshSeconds\":$OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS}" >&2
     local repair_at=$(( $(date +%s) + OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS ))
     if (( repair_at < next_refresh_at )); then
       next_refresh_at="$repair_at"
     fi
+  elif [[ "$status" -eq 6 ]]; then
+    echo '{"event":"osm_alert_integrity_check_deferred","reason":"schema_pending"}' >&2
   else
     echo "{\"event\":\"osm_alert_integrity_check_failed\",\"exitCode\":$status}" >&2
   fi

@@ -11,6 +11,7 @@ read_dataset_state() {
   node --input-type=module - "$DATABASE_URL" <<'NODE'
 import pg from "pg";
 const pool = new pg.Pool({ connectionString: process.argv[2] });
+let exitCode = 0;
 try {
   const result = await pool.query(`
     with active_alerts as (
@@ -37,9 +38,21 @@ try {
     row.status ?? "never",
     row.records_count === null || row.records_count === undefined ? "-1" : Number(row.records_count),
   ].join("\t"));
+} catch (error) {
+  if (error?.code === "42P01" || error?.code === "42703") {
+    process.stdout.write("0\tschema_pending\t-1");
+  } else {
+    console.error(JSON.stringify({
+      event: "osm_alert_healthcheck_query_failed",
+      code: error?.code ?? "unknown",
+      message: error?.message ?? String(error),
+    }));
+    exitCode = 1;
+  }
 } finally {
   await pool.end();
 }
+process.exit(exitCode);
 NODE
 }
 
@@ -64,6 +77,10 @@ state_line="$(read_dataset_state)" || {
   exit 3
 }
 IFS=$'\t' read -r active_count import_status imported_records <<< "$state_line"
+if [[ "$import_status" == "schema_pending" ]]; then
+  echo '{"event":"osm_alert_healthcheck_deferred","reason":"schema_pending"}' >&2
+  exit 6
+fi
 dataset_status="$(classify_state "$active_count" "$import_status" "$imported_records")"
 sources_missing=false
 missing_json="[]"

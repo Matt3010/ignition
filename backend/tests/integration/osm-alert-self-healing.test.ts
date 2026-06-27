@@ -136,6 +136,15 @@ echo "$*" >> ${JSON.stringify(bashPath(join(root, "npm.log")))}
     expect(result.stderr).toContain('"reason":"missing_sources"');
   });
 
+  it("defers alert checks while migrations have not created the expected schema", async () => {
+    await installFakes(["0\\tschema_pending\\t-1"]);
+    await writeFile(join(data, "italy.alerts.osm"), "<osm version=\"0.6\"></osm>");
+    const result = run();
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('"reason":"schema_pending"');
+    await expect(readFile(join(root, "npm.log"), "utf8")).rejects.toThrow();
+  });
+
   it("fails when import metadata remains inconsistent", async () => {
     await installFakes(["0\\tnever\\t-1", "0\\tsuccess\\t12"]);
     await writeFile(join(data, "italy.alerts.osm"), "<osm version=\"0.6\"></osm>");
@@ -156,5 +165,16 @@ echo "$*" >> ${JSON.stringify(bashPath(join(root, "npm.log")))}
     expect(loop).toContain("OSM_REFRESH_SOURCE_REPAIR_DELAY_SECONDS");
     expect(loop).toContain("schedule_source_repair");
     expect(loop).toContain('[[ "$status" -eq 5 ]]');
+    expect(loop).toContain('[[ "$status" -eq 6 ]]');
+    expect(loop).toContain("osm_alert_integrity_check_deferred");
+  });
+
+  it("does not overwrite a refresh failure backoff when sources are still missing", async () => {
+    const loop = await readFile(resolve("scripts/osm-refresh-loop.sh"), "utf8");
+    expect(loop).toContain("refresh_retry_pending=true");
+    expect(loop).toContain("wait_for_refresh_retry");
+    expect(loop.indexOf("wait_for_refresh_retry")).toBeLessThan(
+      loop.indexOf("schedule_full_refresh"),
+    );
   });
 });
