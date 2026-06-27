@@ -2,7 +2,16 @@ import type pg from "pg";
 import type { RoadAlert } from "../../domain/models/alert.js";
 import type { OsmBounds } from "../osm/osm-alert-parser.js";
 import { assertSafeImportSize, countActiveAlertsInBounds, mergeOsmBounds } from "./postgis-alert-import-safety.js";
-import { alertParameters, alertStagingValuePlaceholder, lastAlertById } from "./postgis-alert-sql.js";
+import {
+  ROAD_ALERT_INSERT_COLUMNS,
+  ROAD_ALERT_SELECT_FROM_STAGING,
+  ROAD_ALERT_STAGING_COLUMNS,
+  ROAD_ALERT_STAGING_UPSERT_SET,
+  ROAD_ALERT_UPSERT_SET,
+  alertParameters,
+  alertStagingValuePlaceholder,
+  lastAlertById,
+} from "./postgis-alert-sql.js";
 
 type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
 const IMPORT_BATCH_SIZE = 500;
@@ -143,47 +152,11 @@ async function insertAlertStagingRows(executor: QueryExecutor, alerts: RoadAlert
     await executor.query(
       `
       insert into road_alerts_import_staging (
-        id, type, subtype, capabilities, primary_capability, latitude, longitude, speed_limit_kmh, speed_limit_source,
-        direction, bearing, road_id, confidence, active, valid_from, valid_until,
-        source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
-        osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
-        operational_status, status_reason, direction_bearings, osm_presence_status,
-        original_osm_ids
+        ${ROAD_ALERT_STAGING_COLUMNS}
       ) values
         ${valuesSql}
       on conflict (id) do update set
-        type = excluded.type,
-        subtype = excluded.subtype,
-        capabilities = excluded.capabilities,
-        primary_capability = excluded.primary_capability,
-        latitude = excluded.latitude,
-        longitude = excluded.longitude,
-        speed_limit_kmh = excluded.speed_limit_kmh,
-        speed_limit_source = excluded.speed_limit_source,
-        direction = excluded.direction,
-        bearing = excluded.bearing,
-        road_id = excluded.road_id,
-        confidence = excluded.confidence,
-        active = excluded.active,
-        valid_from = excluded.valid_from,
-        valid_until = excluded.valid_until,
-        source = excluded.source,
-        osm_type = excluded.osm_type,
-        osm_id = excluded.osm_id,
-        osm_relation_id = excluded.osm_relation_id,
-        osm_version = excluded.osm_version,
-        osm_timestamp = excluded.osm_timestamp,
-        osm_changeset = excluded.osm_changeset,
-        osm_user = excluded.osm_user,
-        osm_uid = excluded.osm_uid,
-        source_tags = excluded.source_tags,
-        fixme = excluded.fixme,
-        position_approximate = excluded.position_approximate,
-        operational_status = excluded.operational_status,
-        status_reason = excluded.status_reason,
-        direction_bearings = excluded.direction_bearings,
-        osm_presence_status = excluded.osm_presence_status,
-        original_osm_ids = excluded.original_osm_ids
+        ${ROAD_ALERT_STAGING_UPSERT_SET}
       `,
       parameters,
     );
@@ -198,57 +171,13 @@ async function countAlertStagingRows(executor: QueryExecutor): Promise<number> {
 async function upsertFromAlertStaging(executor: QueryExecutor): Promise<void> {
   await executor.query(`
     insert into road_alerts (
-      id, type, subtype, capabilities, primary_capability, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source,
-      direction, bearing, road_id, confidence, active, valid_from, valid_until,
-      source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
-      osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
-      operational_status, status_reason, direction_bearings, osm_presence_status,
-      original_osm_ids, created_at, updated_at
+      ${ROAD_ALERT_INSERT_COLUMNS}
     )
     select
-      id, type, subtype, capabilities, primary_capability, latitude, longitude,
-      ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), speed_limit_kmh, speed_limit_source,
-      direction, bearing, road_id, confidence, active, valid_from, valid_until,
-      source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
-      osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
-      operational_status, status_reason, direction_bearings, osm_presence_status,
-      original_osm_ids, now(), now()
+      ${ROAD_ALERT_SELECT_FROM_STAGING}
     from road_alerts_import_staging
     on conflict (id) do update set
-      type = excluded.type,
-      subtype = excluded.subtype,
-      capabilities = excluded.capabilities,
-      primary_capability = excluded.primary_capability,
-      latitude = excluded.latitude,
-      longitude = excluded.longitude,
-      geometry = excluded.geometry,
-      speed_limit_kmh = excluded.speed_limit_kmh,
-      speed_limit_source = excluded.speed_limit_source,
-      direction = excluded.direction,
-      bearing = excluded.bearing,
-      road_id = excluded.road_id,
-      confidence = excluded.confidence,
-      active = excluded.active,
-      valid_from = excluded.valid_from,
-      valid_until = excluded.valid_until,
-      source = excluded.source,
-      osm_type = excluded.osm_type,
-      osm_id = excluded.osm_id,
-      osm_relation_id = excluded.osm_relation_id,
-      osm_version = excluded.osm_version,
-      osm_timestamp = excluded.osm_timestamp,
-      osm_changeset = excluded.osm_changeset,
-      osm_user = excluded.osm_user,
-      osm_uid = excluded.osm_uid,
-      source_tags = excluded.source_tags,
-      fixme = excluded.fixme,
-      position_approximate = excluded.position_approximate,
-      operational_status = excluded.operational_status,
-      status_reason = excluded.status_reason,
-      direction_bearings = excluded.direction_bearings,
-      osm_presence_status = excluded.osm_presence_status,
-      original_osm_ids = excluded.original_osm_ids,
-      updated_at = now()
+      ${ROAD_ALERT_UPSERT_SET}
   `);
 }
 

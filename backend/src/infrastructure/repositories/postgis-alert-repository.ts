@@ -3,7 +3,13 @@ import type { AlertCandidate, RoadAlert } from "../../domain/models/alert.js";
 import type { AlertDatasetStatus, AlertRepository } from "../../application/ports/alert-repository.js";
 import type { OsmBounds } from "../osm/osm-alert-parser.js";
 import { assertSafeImportSize, countActiveAlertsInBounds } from "./postgis-alert-import-safety.js";
-import { alertParameters, lastAlertById, roadAlertValuePlaceholder } from "./postgis-alert-sql.js";
+import {
+  ROAD_ALERT_INSERT_COLUMNS,
+  ROAD_ALERT_UPSERT_SET,
+  alertParameters,
+  lastAlertById,
+  roadAlertValuePlaceholder,
+} from "./postgis-alert-sql.js";
 
 type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
 const UPSERT_BATCH_SIZE = 500;
@@ -200,49 +206,11 @@ export class PostgisAlertRepository implements AlertRepository {
       await executor.query(
         `
         insert into road_alerts (
-          id, type, subtype, capabilities, primary_capability, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source,
-          direction, bearing, road_id, confidence, active, valid_from, valid_until,
-          source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
-          osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
-          operational_status, status_reason, direction_bearings, osm_presence_status,
-          original_osm_ids, created_at, updated_at
+          ${ROAD_ALERT_INSERT_COLUMNS}
         ) values
           ${valuesSql}
         on conflict (id) do update set
-          type = excluded.type,
-          subtype = excluded.subtype,
-          capabilities = excluded.capabilities,
-          primary_capability = excluded.primary_capability,
-          latitude = excluded.latitude,
-          longitude = excluded.longitude,
-          geometry = excluded.geometry,
-          speed_limit_kmh = excluded.speed_limit_kmh,
-          speed_limit_source = excluded.speed_limit_source,
-          direction = excluded.direction,
-          bearing = excluded.bearing,
-          road_id = excluded.road_id,
-          confidence = excluded.confidence,
-          active = excluded.active,
-          valid_from = excluded.valid_from,
-          valid_until = excluded.valid_until,
-          source = excluded.source,
-          osm_type = excluded.osm_type,
-          osm_id = excluded.osm_id,
-          osm_relation_id = excluded.osm_relation_id,
-          osm_version = excluded.osm_version,
-          osm_timestamp = excluded.osm_timestamp,
-          osm_changeset = excluded.osm_changeset,
-          osm_user = excluded.osm_user,
-          osm_uid = excluded.osm_uid,
-          source_tags = excluded.source_tags,
-          fixme = excluded.fixme,
-          position_approximate = excluded.position_approximate,
-          operational_status = excluded.operational_status,
-          status_reason = excluded.status_reason,
-          direction_bearings = excluded.direction_bearings,
-          osm_presence_status = excluded.osm_presence_status,
-          original_osm_ids = excluded.original_osm_ids,
-          updated_at = now()
+          ${ROAD_ALERT_UPSERT_SET}
         `,
         parameters,
       );

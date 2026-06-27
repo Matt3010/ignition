@@ -2,6 +2,106 @@ import type { RoadAlert } from "../../domain/models/alert.js";
 
 export const ALERT_SQL_PARAM_COUNT = 33;
 
+export const ROAD_ALERT_INSERT_COLUMNS = `
+  id, type, subtype, capabilities, primary_capability, latitude, longitude, geometry, speed_limit_kmh, speed_limit_source,
+  direction, bearing, road_id, confidence, active, valid_from, valid_until,
+  source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
+  osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
+  operational_status, status_reason, direction_bearings, osm_presence_status,
+  original_osm_ids, created_at, updated_at
+`;
+
+export const ROAD_ALERT_STAGING_COLUMNS = `
+  id, type, subtype, capabilities, primary_capability, latitude, longitude, speed_limit_kmh, speed_limit_source,
+  direction, bearing, road_id, confidence, active, valid_from, valid_until,
+  source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
+  osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
+  operational_status, status_reason, direction_bearings, osm_presence_status,
+  original_osm_ids
+`;
+
+export const ROAD_ALERT_SELECT_FROM_STAGING = `
+  id, type, subtype, capabilities, primary_capability, latitude, longitude,
+  ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), speed_limit_kmh, speed_limit_source,
+  direction, bearing, road_id, confidence, active, valid_from, valid_until,
+  source, osm_type, osm_id, osm_relation_id, osm_version, osm_timestamp,
+  osm_changeset, osm_user, osm_uid, source_tags, fixme, position_approximate,
+  operational_status, status_reason, direction_bearings, osm_presence_status,
+  original_osm_ids, now(), now()
+`;
+
+export const ROAD_ALERT_UPSERT_SET = `
+  type = excluded.type,
+  subtype = excluded.subtype,
+  capabilities = excluded.capabilities,
+  primary_capability = excluded.primary_capability,
+  latitude = excluded.latitude,
+  longitude = excluded.longitude,
+  geometry = excluded.geometry,
+  speed_limit_kmh = excluded.speed_limit_kmh,
+  speed_limit_source = excluded.speed_limit_source,
+  direction = excluded.direction,
+  bearing = excluded.bearing,
+  road_id = excluded.road_id,
+  confidence = excluded.confidence,
+  active = excluded.active,
+  valid_from = excluded.valid_from,
+  valid_until = excluded.valid_until,
+  source = excluded.source,
+  osm_type = excluded.osm_type,
+  osm_id = excluded.osm_id,
+  osm_relation_id = excluded.osm_relation_id,
+  osm_version = excluded.osm_version,
+  osm_timestamp = excluded.osm_timestamp,
+  osm_changeset = excluded.osm_changeset,
+  osm_user = excluded.osm_user,
+  osm_uid = excluded.osm_uid,
+  source_tags = excluded.source_tags,
+  fixme = excluded.fixme,
+  position_approximate = excluded.position_approximate,
+  operational_status = excluded.operational_status,
+  status_reason = excluded.status_reason,
+  direction_bearings = excluded.direction_bearings,
+  osm_presence_status = excluded.osm_presence_status,
+  original_osm_ids = excluded.original_osm_ids,
+  updated_at = now()
+`;
+
+export const ROAD_ALERT_STAGING_UPSERT_SET = `
+  type = excluded.type,
+  subtype = excluded.subtype,
+  capabilities = excluded.capabilities,
+  primary_capability = excluded.primary_capability,
+  latitude = excluded.latitude,
+  longitude = excluded.longitude,
+  speed_limit_kmh = excluded.speed_limit_kmh,
+  speed_limit_source = excluded.speed_limit_source,
+  direction = excluded.direction,
+  bearing = excluded.bearing,
+  road_id = excluded.road_id,
+  confidence = excluded.confidence,
+  active = excluded.active,
+  valid_from = excluded.valid_from,
+  valid_until = excluded.valid_until,
+  source = excluded.source,
+  osm_type = excluded.osm_type,
+  osm_id = excluded.osm_id,
+  osm_relation_id = excluded.osm_relation_id,
+  osm_version = excluded.osm_version,
+  osm_timestamp = excluded.osm_timestamp,
+  osm_changeset = excluded.osm_changeset,
+  osm_user = excluded.osm_user,
+  osm_uid = excluded.osm_uid,
+  source_tags = excluded.source_tags,
+  fixme = excluded.fixme,
+  position_approximate = excluded.position_approximate,
+  operational_status = excluded.operational_status,
+  status_reason = excluded.status_reason,
+  direction_bearings = excluded.direction_bearings,
+  osm_presence_status = excluded.osm_presence_status,
+  original_osm_ids = excluded.original_osm_ids
+`;
+
 export function roadAlertValuePlaceholder(batchIndex: number): string {
   const parameter = alertParameterAt(batchIndex);
   return `(
