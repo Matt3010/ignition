@@ -25,23 +25,15 @@ export class SessionTraceStore {
     const now = Date.now();
     this.cleanup(now);
     const previous = this.traces.get(sample.sessionId) ?? [];
-    const sampleTime = Date.parse(sample.timestamp);
-    const latestTime = previous.length > 0 ? Date.parse(previous[previous.length - 1].timestamp) : null;
-    if (latestTime !== null && sampleTime <= latestTime) {
-      throw new ApplicationError(
-        "INVALID_REQUEST",
-        "Campione GPS non successivo all'ultimo campione elaborato",
-        409,
-        [{ path: "timestamp", previousTimestamp: previous[previous.length - 1].timestamp }],
-      );
-    }
+    assertSampleIsNewer(previous, sample);
     this.touch(sample.sessionId, now);
-    const next = [...previous, sample]
-      .filter((item) => {
-        const age = now - Date.parse(item.timestamp);
-        return age >= -this.maxFutureSkewMs && age <= this.ttlMs;
-      })
-      .slice(-this.maxSamples);
+    const next = pruneTraceSamples({
+      samples: [...previous, sample],
+      now,
+      ttlMs: this.ttlMs,
+      maxFutureSkewMs: this.maxFutureSkewMs,
+      maxSamples: this.maxSamples,
+    });
     this.traces.set(sample.sessionId, next);
     return next;
   }
@@ -97,7 +89,14 @@ export class SessionTraceStore {
     }
 
     const misses = (this.consecutiveMatchMisses.get(sessionId) ?? 0) + 1;
-    if (misses >= this.clearStateAfterMisses) {
+    const next = nextRoadStateAfterMatchMiss({
+      state,
+      misses,
+      clearStateAfterMisses: this.clearStateAfterMisses,
+      confidenceDecayFactor: this.confidenceDecayFactor,
+      updatedAt: now,
+    });
+    if (!next) {
       this.roadStates.delete(sessionId);
       this.consecutiveMatchMisses.delete(sessionId);
       if (!this.traces.has(sessionId)) {
@@ -108,13 +107,7 @@ export class SessionTraceStore {
 
     this.consecutiveMatchMisses.set(sessionId, misses);
     this.touch(sessionId, now);
-    if (misses > 1) {
-      this.roadStates.set(sessionId, {
-        ...state,
-        confidence: Math.max(0, Math.min(1, state.confidence * this.confidenceDecayFactor)),
-        updatedAt: now,
-      });
-    }
+    this.roadStates.set(sessionId, next);
   }
 
   private touch(sessionId: string, now: number): void {
@@ -148,5 +141,49 @@ export function previousTracePosition(trace: GpsSample[]): GeoPosition | null {
   return {
     latitude: previous.latitude,
     longitude: previous.longitude,
+  };
+}
+
+export function pruneTraceSamples(input: {
+  samples: GpsSample[];
+  now: number;
+  ttlMs: number;
+  maxFutureSkewMs: number;
+  maxSamples: number;
+}): GpsSample[] {
+  return input.samples
+    .filter((sample) => {
+      const age = input.now - Date.parse(sample.timestamp);
+      return age >= -input.maxFutureSkewMs && age <= input.ttlMs;
+    })
+    .slice(-input.maxSamples);
+}
+
+export function assertSampleIsNewer(previous: GpsSample[], sample: GpsSample): void {
+  if (previous.length === 0) return;
+  const latest = previous[previous.length - 1];
+  if (Date.parse(sample.timestamp) > Date.parse(latest.timestamp)) return;
+
+  throw new ApplicationError(
+    "INVALID_REQUEST",
+    "Campione GPS non successivo all'ultimo campione elaborato",
+    409,
+    [{ path: "timestamp", previousTimestamp: latest.timestamp }],
+  );
+}
+
+export function nextRoadStateAfterMatchMiss(input: {
+  state: SessionRoadState;
+  misses: number;
+  clearStateAfterMisses: number;
+  confidenceDecayFactor: number;
+  updatedAt: number;
+}): SessionRoadState | null {
+  if (input.misses >= input.clearStateAfterMisses) return null;
+  if (input.misses <= 1) return input.state;
+  return {
+    ...input.state,
+    confidence: Math.max(0, Math.min(1, input.state.confidence * input.confidenceDecayFactor)),
+    updatedAt: input.updatedAt,
   };
 }
