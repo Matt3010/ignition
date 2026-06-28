@@ -3,6 +3,7 @@ import type { RoadContextResponse, GpsSample } from "../../domain/models/road-co
 import type { AlertRepository } from "../ports/alert-repository.js";
 import type { RoadContextProvider } from "../ports/road-context-provider.js";
 import type { SessionTraceStore } from "../../domain/services/session-trace.js";
+import { previousTracePosition } from "../../domain/services/session-trace.js";
 import { buildRoadContextAlerts } from "./road-context-alert-selection.js";
 import { toPublicMatchStatus } from "./road-context-mappers.js";
 
@@ -99,13 +100,4 @@ export class GetRoadContextUseCase {
       }
     }
   }
-}
-
-function previousTracePosition(trace: GpsSample[]): { latitude: number; longitude: number } | null {
-  if (trace.length < 2) return null;
-  const previous = trace[trace.length - 2];
-  return {
-    latitude: previous.latitude,
-    longitude: previous.longitude,
-  };
 }

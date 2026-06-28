@@ -1,4 +1,4 @@
-import { SessionTraceStore } from "../../src/domain/services/session-trace.js";
+import { previousTracePosition, SessionTraceStore } from "../../src/domain/services/session-trace.js";
 import { validPayload } from "../fixtures/config.js";
 
 describe("session trace", () => {
@@ -20,6 +20,18 @@ it("keeps the trace when no previous road state exists", () => {
   expect(store.getState(validPayload.sessionId)).toBeNull();
   const trace = store.add({ ...validPayload, timestamp: new Date(baseTime + 1000).toISOString() });
   expect(trace).toHaveLength(2);
+});
+
+it("returns the previous trace position from the second-to-last sample", () => {
+  const baseTime = Date.now();
+  const trace = [
+    { ...validPayload, latitude: 45.1, longitude: 11.1, timestamp: new Date(baseTime).toISOString() },
+    { ...validPayload, latitude: 45.2, longitude: 11.2, timestamp: new Date(baseTime + 1_000).toISOString() },
+    { ...validPayload, latitude: 45.3, longitude: 11.3, timestamp: new Date(baseTime + 2_000).toISOString() },
+  ];
+
+  expect(previousTracePosition(trace)).toEqual({ latitude: 45.2, longitude: 11.2 });
+  expect(previousTracePosition(trace.slice(0, 1))).toBeNull();
 });
 
 it("drops samples that are too far in the future", () => {

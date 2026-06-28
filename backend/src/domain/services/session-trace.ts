@@ -1,6 +1,11 @@
 import { ApplicationError } from "../errors/application-error.js";
 import type { GpsSample, SessionRoadState } from "../models/road-context.js";
 
+export interface GeoPosition {
+  latitude: number;
+  longitude: number;
+}
+
 export class SessionTraceStore {
   private readonly traces = new Map<string, GpsSample[]>();
   private readonly roadStates = new Map<string, SessionRoadState>();
@@ -135,4 +140,13 @@ export class SessionTraceStore {
     this.consecutiveMatchMisses.delete(sessionId);
     this.lastTouched.delete(sessionId);
   }
+}
+
+export function previousTracePosition(trace: GpsSample[]): GeoPosition | null {
+  if (trace.length < 2) return null;
+  const previous = trace[trace.length - 2];
+  return {
+    latitude: previous.latitude,
+    longitude: previous.longitude,
+  };
 }
