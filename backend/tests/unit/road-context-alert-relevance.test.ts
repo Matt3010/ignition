@@ -136,4 +136,65 @@ describe("road-context alert relevance", () => {
       { id: "route-alert", relevance: "nearby" },
     ]);
   });
+
+  it("emits timing metrics without adding them to the response", async () => {
+    const provider: RoadContextProvider = {
+      match: async () => ({
+        matched: true,
+        roadId: "way-1",
+        roadName: "Test road",
+        speedLimitKmh: 70,
+        speedLimitSource: "explicit",
+        roadType: "primary",
+        confidence: 0.95,
+        direction: "forward",
+        dataTimestamp: new Date().toISOString(),
+        distanceFromTraceMeters: 1,
+        bearing: 0,
+        valhallaQuality: 1,
+      }),
+      health: async () => "up",
+    };
+
+    const repository: AlertRepository = {
+      findNearby: async () => [baseAlert],
+      hasAvailableAlerts: async () => true,
+      getDatasetStatus: async () => "available",
+      upsertMany: async () => 0,
+      health: async () => "up",
+    };
+
+    const useCase = new GetRoadContextUseCase(
+      provider,
+      repository,
+      new SessionTraceStore(180_000),
+      testConfig(),
+    );
+
+    let timing: unknown;
+    const response = await useCase.execute(
+      {
+        latitude: 45,
+        longitude: 11,
+        speedKmh: 50,
+        course: 0,
+        horizontalAccuracyMeters: 5,
+        timestamp: new Date().toISOString(),
+        sessionId: "550e8400-e29b-41d4-a716-446655440000",
+      },
+      (metrics) => {
+        timing = metrics;
+      },
+    );
+
+    expect(response).not.toHaveProperty("timing");
+    expect(timing).toEqual({
+      totalUseCaseMs: expect.any(Number),
+      queueWaitMs: expect.any(Number),
+      valhallaMatchMs: expect.any(Number),
+      findNearbyMs: expect.any(Number),
+      alertsStatusMs: expect.any(Number),
+      alertSelectionMs: expect.any(Number),
+    });
+  });
 });
