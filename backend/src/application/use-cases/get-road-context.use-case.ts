@@ -1,11 +1,10 @@
 import type { AppConfig } from "../../config/env.js";
-import type { AlertCandidate } from "../../domain/models/alert.js";
 import type { RoadContextResponse, GpsSample } from "../../domain/models/road-context.js";
-import { filterRelevantAlerts } from "../../domain/services/alert-filter.js";
 import type { AlertRepository } from "../ports/alert-repository.js";
 import type { RoadContextProvider } from "../ports/road-context-provider.js";
 import type { SessionTraceStore } from "../../domain/services/session-trace.js";
-import { toAlertResponse, toPublicMatchStatus } from "./road-context-mappers.js";
+import { buildRoadContextAlerts } from "./road-context-alert-selection.js";
+import { toPublicMatchStatus } from "./road-context-mappers.js";
 
 export class GetRoadContextUseCase {
   private readonly sessionQueues = new Map<string, Promise<void>>();
@@ -41,28 +40,13 @@ export class GetRoadContextUseCase {
         this.alertRepository.getDatasetStatus().catch(() => "unavailable" as const),
       ]);
 
-      const routeAlerts = filterRelevantAlerts({
-        alerts: routeCandidates({
-          alerts: nearby,
-          matchedRoadId: match.roadId,
-          routeRadiusMeters: this.config.ALERT_SEARCH_RADIUS_METERS,
-          includeRouteAlerts: match.matched,
-        }),
-        userCourse: sample.course,
-        matchedRoadBearing: match.bearing,
-        userLatitude: sample.latitude,
-        userLongitude: sample.longitude,
-        userSpeedKmh: sample.speedKmh,
-        horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+      const selectedAlerts = buildRoadContextAlerts({
+        nearby,
+        match,
+        sample,
         previousPosition,
-        behindMinAngleDegrees: this.config.ALERT_BEHIND_MIN_ANGLE_DEGREES,
-        behindImmediateAngleDegrees: this.config.ALERT_BEHIND_IMMEDIATE_ANGLE_DEGREES,
-        behindMinSpeedKmh: this.config.ALERT_BEHIND_MIN_SPEED_KMH,
-        behindMaxGpsAccuracyMeters: this.config.ALERT_BEHIND_MAX_GPS_ACCURACY_METERS,
-        behindMinDistanceIncreaseMeters: this.config.ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS,
-      }).map((alert) => toAlertResponse(alert, "route"));
-
-      const routeAlertIds = new Set(routeAlerts.map((alert) => alert.id));
+        config: this.config,
+      });
 
       if (match.matched) {
         this.traceStore.setState(sample.sessionId, {
@@ -87,12 +71,8 @@ export class GetRoadContextUseCase {
         confidence: match.confidence,
         direction: match.direction,
         dataTimestamp: match.dataTimestamp,
-        alerts: routeAlerts,
-        genericAlerts: genericAlertResponses({
-          alerts: nearby,
-          radiusMeters: this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS,
-          routeAlertIds,
-        }),
+        alerts: selectedAlerts.alerts,
+        genericAlerts: selectedAlerts.genericAlerts,
       };
     } catch (error) {
       this.traceStore.rollbackLast(sample.sessionId, sample.timestamp);
@@ -128,36 +108,4 @@ function previousTracePosition(trace: GpsSample[]): { latitude: number; longitud
     latitude: previous.latitude,
     longitude: previous.longitude,
   };
-}
-
-function routeCandidates(input: {
-  alerts: AlertCandidate[];
-  matchedRoadId: string | null;
-  routeRadiusMeters: number;
-  includeRouteAlerts: boolean;
-}): AlertCandidate[] {
-  if (!input.includeRouteAlerts) return [];
-  return input.alerts.filter(
-    (alert) =>
-      alert.distanceMeters <= input.routeRadiusMeters &&
-      isCandidateOnMatchedRoad(alert.roadId, input.matchedRoadId),
-  );
-}
-
-function genericAlertResponses(input: {
-  alerts: AlertCandidate[];
-  radiusMeters: number;
-  routeAlertIds: Set<string>;
-}): RoadContextResponse["genericAlerts"] {
-  return input.alerts
-    .filter((alert) => alert.distanceMeters <= input.radiusMeters)
-    .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .map((alert) =>
-      toAlertResponse(alert, input.routeAlertIds.has(alert.id) ? "route" : "nearby"),
-    );
-}
-
-function isCandidateOnMatchedRoad(alertRoadId: string | null, matchedRoadId: string | null): boolean {
-  if (!alertRoadId || !matchedRoadId) return true;
-  return alertRoadId === matchedRoadId;
 }
