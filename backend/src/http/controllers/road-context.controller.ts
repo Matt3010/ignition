@@ -8,7 +8,9 @@ export class RoadContextController {
   handle = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const sample = parseRoadContextSample(request);
     logRoadContextRequest(request, sample);
-    const response = await this.useCase.execute(sample);
+    const response = await this.useCase.execute(sample, (timing) => {
+      request.log.info({ timing }, "road context timing");
+    });
     reply.send(response);
   };
 }
