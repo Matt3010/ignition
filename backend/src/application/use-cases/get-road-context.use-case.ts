@@ -1,4 +1,5 @@
 import type { AppConfig } from "../../config/env.js";
+import type { AlertCandidate } from "../../domain/models/alert.js";
 import type { RoadContextResponse, GpsSample } from "../../domain/models/road-context.js";
 import { filterRelevantAlerts } from "../../domain/services/alert-filter.js";
 import type { AlertRepository } from "../ports/alert-repository.js";
@@ -24,38 +25,29 @@ export class GetRoadContextUseCase {
     const trace = this.traceStore.add(sample);
 
     try {
-      const previousPosition =
-        trace.length >= 2
-          ? {
-              latitude: trace[trace.length - 2].latitude,
-              longitude: trace[trace.length - 2].longitude,
-            }
-          : null;
+      const previousPosition = previousTracePosition(trace);
       const previousState = this.traceStore.getState(sample.sessionId);
       const match = await this.provider.match({ sample, trace, previousState });
 
       const [nearby, alertsStatus] = await Promise.all([
         this.alertRepository.findNearby({
-        latitude: sample.latitude,
-        longitude: sample.longitude,
-        radiusMeters: Math.max(
-          this.config.ALERT_SEARCH_RADIUS_METERS,
-          this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS,
-        ),
+          latitude: sample.latitude,
+          longitude: sample.longitude,
+          radiusMeters: Math.max(
+            this.config.ALERT_SEARCH_RADIUS_METERS,
+            this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS,
+          ),
         }),
         this.alertRepository.getDatasetStatus().catch(() => "unavailable" as const),
       ]);
 
-      const routeCandidates = match.matched
-        ? nearby.filter(
-            (alert) =>
-              alert.distanceMeters <= this.config.ALERT_SEARCH_RADIUS_METERS &&
-              isCandidateOnMatchedRoad(alert.roadId, match.roadId),
-          )
-        : [];
-
-      const alerts = filterRelevantAlerts({
-        alerts: routeCandidates,
+      const routeAlerts = filterRelevantAlerts({
+        alerts: routeCandidates({
+          alerts: nearby,
+          matchedRoadId: match.roadId,
+          routeRadiusMeters: this.config.ALERT_SEARCH_RADIUS_METERS,
+          includeRouteAlerts: match.matched,
+        }),
         userCourse: sample.course,
         matchedRoadBearing: match.bearing,
         userLatitude: sample.latitude,
@@ -70,7 +62,7 @@ export class GetRoadContextUseCase {
         behindMinDistanceIncreaseMeters: this.config.ALERT_BEHIND_MIN_DISTANCE_INCREASE_METERS,
       }).map((alert) => toAlertResponse(alert, "route"));
 
-      const routeAlertIds = new Set(alerts.map((alert) => alert.id));
+      const routeAlertIds = new Set(routeAlerts.map((alert) => alert.id));
 
       if (match.matched) {
         this.traceStore.setState(sample.sessionId, {
@@ -95,13 +87,12 @@ export class GetRoadContextUseCase {
         confidence: match.confidence,
         direction: match.direction,
         dataTimestamp: match.dataTimestamp,
-        alerts,
-        genericAlerts: nearby
-          .filter((alert) => alert.distanceMeters <= this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS)
-          .sort((a, b) => a.distanceMeters - b.distanceMeters)
-          .map((alert) =>
-            toAlertResponse(alert, routeAlertIds.has(alert.id) ? "route" : "nearby"),
-          ),
+        alerts: routeAlerts,
+        genericAlerts: genericAlertResponses({
+          alerts: nearby,
+          radiusMeters: this.config.GENERIC_ALERT_SEARCH_RADIUS_METERS,
+          routeAlertIds,
+        }),
       };
     } catch (error) {
       this.traceStore.rollbackLast(sample.sessionId, sample.timestamp);
@@ -128,6 +119,42 @@ export class GetRoadContextUseCase {
       }
     }
   }
+}
+
+function previousTracePosition(trace: GpsSample[]): { latitude: number; longitude: number } | null {
+  if (trace.length < 2) return null;
+  const previous = trace[trace.length - 2];
+  return {
+    latitude: previous.latitude,
+    longitude: previous.longitude,
+  };
+}
+
+function routeCandidates(input: {
+  alerts: AlertCandidate[];
+  matchedRoadId: string | null;
+  routeRadiusMeters: number;
+  includeRouteAlerts: boolean;
+}): AlertCandidate[] {
+  if (!input.includeRouteAlerts) return [];
+  return input.alerts.filter(
+    (alert) =>
+      alert.distanceMeters <= input.routeRadiusMeters &&
+      isCandidateOnMatchedRoad(alert.roadId, input.matchedRoadId),
+  );
+}
+
+function genericAlertResponses(input: {
+  alerts: AlertCandidate[];
+  radiusMeters: number;
+  routeAlertIds: Set<string>;
+}): RoadContextResponse["genericAlerts"] {
+  return input.alerts
+    .filter((alert) => alert.distanceMeters <= input.radiusMeters)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .map((alert) =>
+      toAlertResponse(alert, input.routeAlertIds.has(alert.id) ? "route" : "nearby"),
+    );
 }
 
 function isCandidateOnMatchedRoad(alertRoadId: string | null, matchedRoadId: string | null): boolean {
