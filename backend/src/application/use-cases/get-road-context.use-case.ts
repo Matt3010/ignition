@@ -2,23 +2,23 @@ import type { AppConfig } from "../../config/env.js";
 import type { RoadContextResponse, GpsSample } from "../../domain/models/road-context.js";
 import type { AlertRepository } from "../ports/alert-repository.js";
 import type { RoadContextProvider } from "../ports/road-context-provider.js";
+import { SessionOperationQueue } from "../services/session-operation-queue.js";
 import type { SessionTraceStore } from "../../domain/services/session-trace.js";
 import { previousTracePosition } from "../../domain/services/session-trace.js";
 import { buildRoadContextAlerts } from "./road-context-alert-selection.js";
 import { toPublicMatchStatus } from "./road-context-mappers.js";
 
 export class GetRoadContextUseCase {
-  private readonly sessionQueues = new Map<string, Promise<void>>();
-
   constructor(
     private readonly provider: RoadContextProvider,
     private readonly alertRepository: AlertRepository,
     private readonly traceStore: SessionTraceStore,
     private readonly config: AppConfig,
+    private readonly sessionQueue = new SessionOperationQueue(),
   ) {}
 
   execute(sample: GpsSample): Promise<RoadContextResponse> {
-    return this.enqueue(sample.sessionId, () => this.executeSerial(sample));
+    return this.sessionQueue.run(sample.sessionId, () => this.executeSerial(sample));
   }
 
   private async executeSerial(sample: GpsSample): Promise<RoadContextResponse> {
@@ -81,23 +81,4 @@ export class GetRoadContextUseCase {
     }
   }
 
-  private async enqueue<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.sessionQueues.get(sessionId) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const queued = previous.catch(() => undefined).then(() => current);
-    this.sessionQueues.set(sessionId, queued);
-
-    await previous.catch(() => undefined);
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.sessionQueues.get(sessionId) === queued) {
-        this.sessionQueues.delete(sessionId);
-      }
-    }
-  }
 }
