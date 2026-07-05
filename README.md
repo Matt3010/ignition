@@ -207,3 +207,7 @@ RUN_VALHALLA_INTEGRATION=1 VALHALLA_BASE_URL=http://127.0.0.1:8002 npm run test:
 - Live dynamic traffic incidents are not included without an external authorized source.
 - The current alert model focuses on selected static alert types only.
 - Map matching works only inside areas covered by the prepared Valhalla tiles.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
